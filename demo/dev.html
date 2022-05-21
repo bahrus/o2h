@@ -36,7 +36,10 @@
             console.log(s);
             arr.push(s);
         }
-        o2h(object, stringWriter);
+        const instance = o2h(object, stringWriter);
+        instance.addEventListener('done', () => {
+            target.innerHTML = arr.join('');
+        });
     </script>
 </body>
 </html>

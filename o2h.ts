@@ -9,13 +9,16 @@ export async function o2h(srcObj: any, encodeAndWrite: (s: string) => void, conf
     }
     config!.rootConfig = config;
     const o2hInstance = new O2H(srcObj, config!, encodeAndWrite);
+    return o2hInstance;
 }
 
 export class O2H extends EventTarget{
     self = this;
     constructor(public srcObj: any, public config: O2HConfig, public encodeAndWrite: (s: string) => void) {
         super();
-        this.do_root(this, srcObj);
+        this.do_root(this, srcObj).then(() => {
+            this.dispatchEvent(new Event('done'));
+        })
     }
 
     async do_root({config, encodeAndWrite}: this, srcObj: any){

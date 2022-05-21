@@ -6,6 +6,7 @@ export async function o2h(srcObj, encodeAndWrite, config) {
     }
     config.rootConfig = config;
     const o2hInstance = new O2H(srcObj, config, encodeAndWrite);
+    return o2hInstance;
 }
 export class O2H extends EventTarget {
     srcObj;
@@ -17,7 +18,9 @@ export class O2H extends EventTarget {
         this.srcObj = srcObj;
         this.config = config;
         this.encodeAndWrite = encodeAndWrite;
-        this.do_root(this, srcObj);
+        this.do_root(this, srcObj).then(() => {
+            this.dispatchEvent(new Event('done'));
+        });
     }
     async do_root({ config, encodeAndWrite }, srcObj) {
         const { do_root } = await import('./do_root.js');
