@@ -19,15 +19,17 @@ export class O2H {
 
     async do_root({config, encodeAndWrite}: this, srcObj: any){
         const {do_root} = await import('./do_root.js');
-        do_root(this, srcObj);
+        await do_root(this, srcObj);
     }
 
     async do_string_prop({}: this, obj: any, prop: string){
+        const {do_string_prop} = await import('./do_string_prop.js');
+        await do_string_prop(this, obj, prop);
     }
 
     async do_prop({}: this, obj: any, prop: string){
         const {do_prop} = await import('./do_prop.js');
-        do_prop(this, obj, prop);
+        await do_prop(this, obj, prop);
     }
 
     do_array_item(obj: any, idx: number){

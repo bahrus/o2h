@@ -4,7 +4,6 @@ export async function do_prop({self, config}: O2H, srcObj: any, prop: string){
     const typ = typeof val;
     switch(typ){
         default:
-            console.log({typ});
-            (<any>self)['do_' + typ + '_prop'](self, srcObj, prop);
+            await (<any>self)['do_' + typ + '_prop'](self, srcObj, prop);
     }
 }
