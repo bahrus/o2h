@@ -1,17 +1,18 @@
-import {html} from 'may-it-be/index.js';
 import {O2HConfig} from './types';
+
+export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
 
 export async function o2h(srcObj: any, encodeAndWrite: (s: string) => void, config?: O2HConfig){
     if(config === undefined){
-        const {configJSON} = await import('./config.json', {assert: {type: 'json'}});
+        const configJSON = await import('./config.json', {assert: {type: 'json'}});
         config = configJSON.default;
     }
     config!.rootConfig = config;
     const o2hInstance = new O2H(srcObj, config!, encodeAndWrite);
 }
 export class O2H {
-    async constructor(public srcObj: any, public config: O2HConfig, public encodeAndWrite: (s: string) => void) {
-        await this.do_root(srcObj, this);
+    constructor(public srcObj: any, public config: O2HConfig, public encodeAndWrite: (s: string) => void) {
+        this.do_root(srcObj, this);
     }
 
     async do_root(srcObj: any, {config, encodeAndWrite}: this){
@@ -26,22 +27,22 @@ export class O2H {
     do_array_item(obj: any, idx: number){
     }
 
-    do_obj(obj: any){
-        const verb = Array.isArray(obj) ? 'do_array' : 'do_obj';
-        this.encodeAndWrite(html`<details><summary></summary></details>
+    // do_obj(obj: any){
+    //     const verb = Array.isArray(obj) ? 'do_array' : 'do_obj';
+    //     this.encodeAndWrite(html`<details><summary></summary></details>
 
-        if(Array.isArray(obj)){
-            return this.do_array(obj);
-        }else{
-            return this.do_non_array(obj);
-        }
-    }
+    //     if(Array.isArray(obj)){
+    //         return this.do_array(obj);
+    //     }else{
+    //         return this.do_non_array(obj);
+    //     }
+    // }
 
-    do_array(arr: any[]){
+    // do_array(arr: any[]){
 
-    }
+    // }
 
-    do_non_array(obj: any){
+    // do_non_array(obj: any){
 
-    }
+    // }
 }

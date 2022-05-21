@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script type='module'>
+        const object = {
+            stringProp: 'string',
+            numberProp: 1,
+            booleanProp: true,
+            subObject: {
+                stringProp2: 'string2',
+                numberProp2: 2,
+                booleanProp2: false,
+            },
+            arrayProp: [
+                'string',
+                1,
+                true,
+                {
+                    stringProp3: 'string3',
+                    numberProp3: 3,
+                    booleanProp3: false,
+                },
+            ],
+        };
+
+        const {o2h} = await import('../o2h.js');
+        o2h(object, console.log);
+    </script>
+</body>
+</html>

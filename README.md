@@ -24,8 +24,8 @@ const object = {
     ],
 };
 
-const {o2h} = await import('o2h/o2h.js);
-o2h(object, console.log)
+const {o2h} = await import('o2h/o2h.js');
+o2h(object, console.log);
 ```
 
 Outputs:
