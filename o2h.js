@@ -1,10 +1,5 @@
 export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
-export async function o2h(srcObj, encodeAndWrite, config) {
-    if (config === undefined) {
-        const configJSON = await import('./config.json', { assert: { type: 'json' } });
-        config = configJSON.default;
-    }
-    config.rootConfig = config;
+export function o2h(srcObj, encodeAndWrite, config) {
     const o2hInstance = new O2H(srcObj, config, encodeAndWrite);
     return o2hInstance;
 }
@@ -22,7 +17,13 @@ export class O2H extends EventTarget {
             this.dispatchEvent(new Event('done'));
         });
     }
-    async do_root({ config, encodeAndWrite }, srcObj) {
+    async do_root({ config, encodeAndWrite, self }, srcObj) {
+        if (config === undefined) {
+            const configJSON = await import('./config.json', { assert: { type: 'json' } });
+            config = configJSON.default;
+            self.config = config;
+        }
+        config.rootConfig = config;
         const { do_root } = await import('./do_root.js');
         await do_root(this, srcObj);
     }
