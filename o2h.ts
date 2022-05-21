@@ -10,18 +10,24 @@ export async function o2h(srcObj: any, encodeAndWrite: (s: string) => void, conf
     config!.rootConfig = config;
     const o2hInstance = new O2H(srcObj, config!, encodeAndWrite);
 }
+
 export class O2H {
+    self = this;
     constructor(public srcObj: any, public config: O2HConfig, public encodeAndWrite: (s: string) => void) {
-        this.do_root(srcObj, this);
+        this.do_root(this, srcObj);
     }
 
-    async do_root(srcObj: any, {config, encodeAndWrite}: this){
+    async do_root({config, encodeAndWrite}: this, srcObj: any){
         const {do_root} = await import('./do_root.js');
-        do_root(this, srcObj, config, encodeAndWrite);
+        do_root(this, srcObj);
     }
 
-    do_prop(obj: any, prop: string){
+    async do_string_prop({}: this, obj: any, prop: string){
+    }
 
+    async do_prop({}: this, obj: any, prop: string){
+        const {do_prop} = await import('./do_prop.js');
+        do_prop(this, obj, prop);
     }
 
     do_array_item(obj: any, idx: number){

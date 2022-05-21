@@ -1,14 +1,14 @@
-export function do_root(o2h, srcObj, config, encodeAndWrite) {
+export async function do_root({ config, encodeAndWrite, self }, srcObj) {
     encodeAndWrite(config.wrapperOpen);
     if (Array.isArray(srcObj)) {
         for (let i = 0, len = srcObj.length; i < len; i++) {
-            o2h.do_array_item(srcObj[i], i);
+            await self.do_array_item(srcObj[i], i);
         }
     }
     else {
         for (const key in srcObj) {
-            o2h.do_prop(srcObj[key], key);
+            await self.do_prop(self, srcObj, key);
         }
     }
-    encodeAndWrite(config.wrapperClosed);
+    encodeAndWrite(config.wrapperClose);
 }

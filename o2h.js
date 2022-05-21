@@ -11,17 +11,22 @@ export class O2H {
     srcObj;
     config;
     encodeAndWrite;
+    self = this;
     constructor(srcObj, config, encodeAndWrite) {
         this.srcObj = srcObj;
         this.config = config;
         this.encodeAndWrite = encodeAndWrite;
-        this.do_root(srcObj, this);
+        this.do_root(this, srcObj);
     }
-    async do_root(srcObj, { config, encodeAndWrite }) {
+    async do_root({ config, encodeAndWrite }, srcObj) {
         const { do_root } = await import('./do_root.js');
-        do_root(this, srcObj, config, encodeAndWrite);
+        do_root(this, srcObj);
     }
-    do_prop(obj, prop) {
+    async do_string_prop({}, obj, prop) {
+    }
+    async do_prop({}, obj, prop) {
+        const { do_prop } = await import('./do_prop.js');
+        do_prop(this, obj, prop);
     }
     do_array_item(obj, idx) {
     }

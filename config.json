@@ -1,3 +1,9 @@
 {
-    "wrapperOpen": "form"
+    "wrapperOpen": "<form>",
+    "wrapperClose": "</form>",
+    "objPropOpen": "<details>",
+    "objPropClose": "</details>",
+    "stringPropOpen": "<label>$0",
+    "stringPropValue": "<input type='text' value='$0'/>",
+    "stringPropClose": "</label>"
 }
