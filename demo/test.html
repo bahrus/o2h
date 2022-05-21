@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <details>
+        <summary>hello</summary>
+    </details>
+    <script>
+        const root = document.querySelector('details').attachShadow({mode: 'open'});
+        root.innerHTML = '<div>hello from the underworld</div>';
+    </script>
+</body>
+</html>
