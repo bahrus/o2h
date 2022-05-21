@@ -4,6 +4,9 @@
     "objPropOpen": "<details>",
     "objPropClose": "</details>",
     "stringPropOpen": "<label>$0",
-    "stringPropValue": "<input type='text' value='$0'/>",
-    "stringPropClose": "</label>"
+    "stringPropValue": "<input type='text' value='$0'>",
+    "stringPropClose": "</label>",
+    "numberPropOpen": "<label>$0",
+    "numberPropValue": "<input type='number' value='$0'>",
+    "numberPropClose": "</label>"
 }

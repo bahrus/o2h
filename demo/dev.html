@@ -7,10 +7,11 @@
     <title>Document</title>
 </head>
 <body>
+    <div id='target'></div>
     <script type='module'>
         const object = {
             stringProp: 'string',
-            // numberProp: 1,
+            numberProp: 1,
             // booleanProp: true,
             // subObject: {
             //     stringProp2: 'string2',
@@ -30,7 +31,12 @@
         };
 
         const {o2h} = await import('../o2h.js');
-        o2h(object, console.log);
+        const arr = [];
+        const stringWriter = (s) => {
+            console.log(s);
+            arr.push(s);
+        }
+        o2h(object, stringWriter);
     </script>
 </body>
 </html>

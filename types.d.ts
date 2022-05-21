@@ -6,5 +6,8 @@ export interface O2HConfig {
     stringPropOpen: string;
     stringPropValue: string;
     stringPropClose: string;
+    numberPropOpen: string;
+    numberPropValue: string;
+    numberPropClose: string;
     rootConfig?: O2HConfig;
 }

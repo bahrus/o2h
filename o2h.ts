@@ -11,9 +11,10 @@ export async function o2h(srcObj: any, encodeAndWrite: (s: string) => void, conf
     const o2hInstance = new O2H(srcObj, config!, encodeAndWrite);
 }
 
-export class O2H {
+export class O2H extends EventTarget{
     self = this;
     constructor(public srcObj: any, public config: O2HConfig, public encodeAndWrite: (s: string) => void) {
+        super();
         this.do_root(this, srcObj);
     }
 
@@ -25,6 +26,11 @@ export class O2H {
     async do_string_prop({}: this, obj: any, prop: string){
         const {do_string_prop} = await import('./do_string_prop.js');
         await do_string_prop(this, obj, prop);
+    }
+
+    async do_number_prop({}: this, obj: any, prop: string){
+        const {do_number_prop} = await import('./do_number_prop.js');
+        await do_number_prop(this, obj, prop);
     }
 
     async do_prop({}: this, obj: any, prop: string){
