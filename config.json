@@ -1,12 +1,15 @@
 {
     "wrapperOpen": "<form>",
     "wrapperClose": "</form>",
-    "objPropOpen": "<details>",
-    "objPropClose": "</details>",
+    "objectPropOpen": "<details><summary>$0</summary>",
+    "objectPropClose": "</details>",
     "stringPropOpen": "<label>$0",
     "stringPropValue": "<input type='text' value='$0'>",
     "stringPropClose": "</label>",
     "numberPropOpen": "<label>$0",
     "numberPropValue": "<input type='number' value='$0'>",
-    "numberPropClose": "</label>"
+    "numberPropClose": "</label>",
+    "booleanPropOpen": "<label>$0",
+    "booleanPropValue": "<input type='checkbox' $0>",
+    "booleanPropClose": "</label>"
 }

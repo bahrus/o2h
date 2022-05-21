@@ -33,9 +33,19 @@ export class O2H extends EventTarget{
         await do_string_prop(this, obj, prop);
     }
 
+    async do_boolean_prop({}: this, obj: any, prop: string){
+        const {do_boolean_prop} = await import('./do_boolean_prop.js');
+        await do_boolean_prop(this, obj, prop);
+    }
+
     async do_number_prop({}: this, obj: any, prop: string){
         const {do_number_prop} = await import('./do_number_prop.js');
         await do_number_prop(this, obj, prop);
+    }
+
+    async do_object_prop({}: this, obj: any, prop: string){
+        const {do_object_prop} = await import('./do_object_prop.js');
+        await do_object_prop(this, obj, prop);
     }
 
     async do_prop({}: this, obj: any, prop: string){
