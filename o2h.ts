@@ -64,10 +64,10 @@ export class O2H extends EventTarget{
 
 
 
-    async do_array_item(obj: any, idx: number){
-        const {do_array_item} = await import('./do_array_item.js');
-        await do_array_item(this, obj, idx);
-    }
+    // async do_array_item(obj: any, idx: number){
+    //     const {do_array_item} = await import('./do_array_item.js');
+    //     await do_array_item(this, obj, idx);
+    // }
 
     propString(prop: string | number){
         return typeof prop === 'string' ? prop : `[${prop}]`;
