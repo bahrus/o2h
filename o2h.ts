@@ -23,9 +23,18 @@ export class O2H extends EventTarget{
             self.config = config;
         }
         config!.rootConfig = config;
-
         const {do_root} = await import('./do_root.js');
         await do_root(this, srcObj);
+    }
+
+    async do_object({}: this, obj: any){
+        const {do_object} = await import('./do_object.js');
+        await do_object(this, obj);
+    }
+
+    async do_prop({}: this, obj: any, prop: string){
+        const {do_prop} = await import('./do_prop.js');
+        await do_prop(this, obj, prop);
     }
 
     async do_string_prop({}: this, obj: any, prop: string){
@@ -48,10 +57,12 @@ export class O2H extends EventTarget{
         await do_object_prop(this, obj, prop);
     }
 
-    async do_prop({}: this, obj: any, prop: string){
-        const {do_prop} = await import('./do_prop.js');
-        await do_prop(this, obj, prop);
+    async do_array_prop({}: this, obj: any, prop: string){
+        const {do_array_prop} = await import('./do_array_prop.js');
+        await do_array_prop(this, obj, prop);
     }
+
+
 
     do_array_item(obj: any, idx: number){
     }
