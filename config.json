@@ -12,5 +12,8 @@
     "booleanPropOpen": "<label>$0",
     "booleanPropValue": "<input type='checkbox' $0>",
     "booleanPropClose": "</label>",
-    "arrayItemOpen": ""
+    "arrayPropOpen": "<ol>",
+    "arrayPropClose": "</ol>",
+    "arrayItemOpen": "<li>",
+    "arrayItemClose": "</li>"
 }

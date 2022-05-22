@@ -32,32 +32,32 @@ export class O2H extends EventTarget{
         await do_object(this, obj);
     }
 
-    async do_prop({}: this, obj: any, prop: string){
+    async do_prop({}: this, obj: any, prop: string | number){
         const {do_prop} = await import('./do_prop.js');
         await do_prop(this, obj, prop);
     }
 
-    async do_string_prop({}: this, obj: any, prop: string){
+    async do_string_prop({}: this, obj: any, prop: string | number){
         const {do_string_prop} = await import('./do_string_prop.js');
         await do_string_prop(this, obj, prop);
     }
 
-    async do_boolean_prop({}: this, obj: any, prop: string){
+    async do_boolean_prop({}: this, obj: any, prop: string | number){
         const {do_boolean_prop} = await import('./do_boolean_prop.js');
         await do_boolean_prop(this, obj, prop);
     }
 
-    async do_number_prop({}: this, obj: any, prop: string){
+    async do_number_prop({}: this, obj: any, prop: string | number){
         const {do_number_prop} = await import('./do_number_prop.js');
         await do_number_prop(this, obj, prop);
     }
 
-    async do_object_prop({}: this, obj: any, prop: string){
+    async do_object_prop({}: this, obj: any, prop: string | number){
         const {do_object_prop} = await import('./do_object_prop.js');
         await do_object_prop(this, obj, prop);
     }
 
-    async do_array_prop({}: this, obj: any, prop: string){
+    async do_array_prop({}: this, obj: any, prop: string | number){
         const {do_array_prop} = await import('./do_array_prop.js');
         await do_array_prop(this, obj, prop);
     }
@@ -67,6 +67,10 @@ export class O2H extends EventTarget{
     async do_array_item(obj: any, idx: number){
         const {do_array_item} = await import('./do_array_item.js');
         await do_array_item(this, obj, idx);
+    }
+
+    propString(prop: string | number){
+        return typeof prop === 'string' ? prop : `[${prop}]`;
     }
 
 }

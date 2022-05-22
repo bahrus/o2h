@@ -59,4 +59,7 @@ export class O2H extends EventTarget {
         const { do_array_item } = await import('./do_array_item.js');
         await do_array_item(this, obj, idx);
     }
+    propString(prop) {
+        return typeof prop === 'string' ? prop : `[${prop}]`;
+    }
 }

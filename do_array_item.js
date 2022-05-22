@@ -1,7 +1,7 @@
 export async function do_array_item({ self, config }, srcObj, idx) {
     const val = srcObj[idx];
-    const { objectPropClose, objectPropOpen } = config;
-    self.encodeAndWrite(objectPropOpen.replaceAll('$0', idx));
+    const { arrayItemClose, arrayItemOpen } = config;
+    self.encodeAndWrite(arrayItemOpen.replaceAll('$0', idx.toString()));
     await self.do_object(self, val);
-    self.encodeAndWrite(objectPropClose);
+    self.encodeAndWrite(arrayItemClose);
 }
