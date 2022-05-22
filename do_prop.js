@@ -1,13 +1,19 @@
+import { obj_guid } from './o2h.js';
 export async function do_prop({ self, config }, srcObj, prop) {
     const val = srcObj[prop];
     const typ = typeof val;
     switch (typ) {
         case 'object':
-            if (Array.isArray(val)) {
-                await self.do_array_prop(self, srcObj, prop);
+            if (val[obj_guid]) {
+                await self[val[obj_guid]](self, srcObj, prop);
             }
             else {
-                await self.do_object_prop(self, srcObj, prop);
+                if (Array.isArray(val)) {
+                    await self.do_array_prop(self, srcObj, prop);
+                }
+                else {
+                    await self.do_object_prop(self, srcObj, prop);
+                }
             }
             break;
         default:

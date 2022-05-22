@@ -2,7 +2,7 @@
 	"compilerOptions": {
 		"target": "ESNext",
 		"module":"ESNext",
-		"lib": ["ES2021.String"],
+		"lib": ["ESNext"],
 		"sourceMap": false,
 		"experimentalDecorators": false,
 		"newLine": "LF",
