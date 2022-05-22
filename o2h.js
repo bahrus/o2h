@@ -55,6 +55,8 @@ export class O2H extends EventTarget {
         const { do_array_prop } = await import('./do_array_prop.js');
         await do_array_prop(this, obj, prop);
     }
-    do_array_item(obj, idx) {
+    async do_array_item(obj, idx) {
+        const { do_array_item } = await import('./do_array_item.js');
+        await do_array_item(this, obj, idx);
     }
 }

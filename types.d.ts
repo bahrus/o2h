@@ -14,5 +14,7 @@ export interface O2HConfig {
     booleanPropClose: string;
     arrayPropOpen: string;
     arrayPropClose: string;
+    arrayItemOpen: string;
+    arrayItemClose: string;
     rootConfig?: O2HConfig;
 }

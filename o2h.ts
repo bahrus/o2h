@@ -64,25 +64,9 @@ export class O2H extends EventTarget{
 
 
 
-    do_array_item(obj: any, idx: number){
+    async do_array_item(obj: any, idx: number){
+        const {do_array_item} = await import('./do_array_item.js');
+        await do_array_item(this, obj, idx);
     }
 
-    // do_obj(obj: any){
-    //     const verb = Array.isArray(obj) ? 'do_array' : 'do_obj';
-    //     this.encodeAndWrite(html`<details><summary></summary></details>
-
-    //     if(Array.isArray(obj)){
-    //         return this.do_array(obj);
-    //     }else{
-    //         return this.do_non_array(obj);
-    //     }
-    // }
-
-    // do_array(arr: any[]){
-
-    // }
-
-    // do_non_array(obj: any){
-
-    // }
 }
