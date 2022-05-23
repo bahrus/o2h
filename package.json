@@ -1,6 +1,6 @@
 {
   "name": "o2h",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Convert JavaScript Object into canonical HTML",
   "main": "o2h.js",
   "module": "o2h.js",
@@ -17,7 +17,6 @@
     "./o2h.js": "./o2h.js"
   },
   "types": "types.d.ts",
-
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "serve": "node node_modules/may-it-serve/serve.js",
