@@ -1,23 +1,40 @@
 {
   "name": "o2h",
   "version": "0.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Convert JavaScript Object into canonical HTML",
+  "main": "o2h.js",
+  "module": "o2h.js",
+  "keywords": [
+    "html",
+    "object",
+    "transformer"
+  ],
+  "files": [
+    "*.*"
+  ],
+  "exports": {
+    ".": "./o2h.js",
+    "./o2h.js": "./o2h.js"
+  },
+  "types": "types.d.ts",
+
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "serve": "node node_modules/may-it-serve/serve.js"
+    "serve": "node node_modules/may-it-serve/serve.js",
+    "package-check": "package-check"
   },
   "dependencies": {
     "may-it-be": "0.0.162"
   },
   "devDependencies": {
-    "may-it-serve": "0.0.0"
+    "may-it-serve": "0.0.0",
+    "@skypack/package-check": "0.2.2"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bahrus/o2h.git"
   },
-  "author": "",
+  "author": "anderson.bruce.b@gmail.com",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/bahrus/o2h/issues"
