@@ -1,4 +1,6 @@
-export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
+import { camelToLisp } from 'may-it-be/camelToLisp.js';
+//export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
+export const mib = '-mib-';
 export function o2h(srcObj, encodeAndWrite, config) {
     const o2hInstance = new O2H(srcObj, config, encodeAndWrite);
     return o2hInstance;
@@ -62,4 +64,14 @@ export class O2H extends EventTarget {
     propString(prop) {
         return typeof prop === 'string' ? prop : `[${prop}]`;
     }
+}
+export function replMIB(s, obj) {
+    if (obj === undefined) {
+        return s.replace(mib, '');
+    }
+    const out = [];
+    for (const key in obj) {
+        out.push(`${camelToLisp(key)}='${JSON.stringify(obj[key])}'`);
+    }
+    return s.replace(mib, out.join(' '));
 }

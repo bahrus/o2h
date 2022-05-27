@@ -1,6 +1,9 @@
 import {O2HConfig} from './types';
+import {camelToLisp} from 'may-it-be/camelToLisp.js';
+import { MayItBe } from 'may-it-be';
 
-export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
+//export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
+export const mib = '-mib-';
 
 export function o2h(srcObj: any, encodeAndWrite: (s: string) => void, config?: O2HConfig){
     const o2hInstance = new O2H(srcObj, config!, encodeAndWrite);
@@ -73,4 +76,15 @@ export class O2H extends EventTarget{
         return typeof prop === 'string' ? prop : `[${prop}]`;
     }
 
+}
+
+export function replMIB(s: string, obj?: MayItBe){
+    if(obj === undefined){
+        return s.replace(mib, '');
+    }
+    const out: string[] = [];
+    for(const key in obj){
+        out.push(`${camelToLisp(key)}='${JSON.stringify((<any>obj)[key])}'`)
+    }
+    return s.replace(mib, out.join(' '));
 }
