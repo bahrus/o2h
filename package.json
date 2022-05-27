@@ -2,6 +2,7 @@
   "name": "o2h",
   "version": "0.0.1",
   "description": "Convert JavaScript Object into canonical HTML",
+  "type": "module",
   "main": "o2h.js",
   "module": "o2h.js",
   "keywords": [
