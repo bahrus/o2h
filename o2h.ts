@@ -12,6 +12,7 @@ export function o2h(srcObj: any, encodeAndWrite: (s: string) => void, config?: O
 
 export class O2H extends EventTarget{
     self = this;
+    stack: (string | number)[] = [];
     constructor(public srcObj: any, public config: O2HConfig, public encodeAndWrite: (s: string) => void) {
         super();
         this.do_root(this, srcObj).then(() => {
@@ -35,34 +36,46 @@ export class O2H extends EventTarget{
         await do_object(this, obj);
     }
 
-    async do_prop({}: this, obj: any, prop: string | number){
+    async do_prop({stack}: this, obj: any, prop: string | number){
         const {do_prop} = await import('./do_prop.js');
+        stack.push(prop);
         await do_prop(this, obj, prop);
+        stack.pop();
     }
 
-    async do_string_prop({}: this, obj: any, prop: string | number){
+    async do_string_prop({stack}: this, obj: any, prop: string | number){
         const {do_string_prop} = await import('./do_string_prop.js');
+        //stack.push(prop);
         await do_string_prop(this, obj, prop);
+        //stack.pop();
     }
 
-    async do_boolean_prop({}: this, obj: any, prop: string | number){
+    async do_boolean_prop({stack}: this, obj: any, prop: string | number){
         const {do_boolean_prop} = await import('./do_boolean_prop.js');
+        //stack.push(prop);
         await do_boolean_prop(this, obj, prop);
+        //stack.pop();
     }
 
-    async do_number_prop({}: this, obj: any, prop: string | number){
+    async do_number_prop({stack}: this, obj: any, prop: string | number){
         const {do_number_prop} = await import('./do_number_prop.js');
+        //stack.push(prop);
         await do_number_prop(this, obj, prop);
+        //stack.pop();
     }
 
-    async do_object_prop({}: this, obj: any, prop: string | number){
+    async do_object_prop({stack}: this, obj: any, prop: string | number){
         const {do_object_prop} = await import('./do_object_prop.js');
+        //stack.push(prop);
         await do_object_prop(this, obj, prop);
+        //stack.pop();
     }
 
-    async do_array_prop({}: this, obj: any, prop: string | number){
+    async do_array_prop({stack}: this, obj: any, prop: string | number){
         const {do_array_prop} = await import('./do_array_prop.js');
+        //stack.push(prop);
         await do_array_prop(this, obj, prop);
+        //stack.pop();
     }
 
 

@@ -1,5 +1,6 @@
 import { replMIB } from './o2h.js';
-export async function do_string_prop({ self, config }, srcObj, prop) {
+export async function do_string_prop({ self, config, stack }, srcObj, prop) {
+    console.log(stack.join('.'));
     const val = srcObj[prop];
     const { stringPropClose, stringPropOpen, stringPropValue, stringPropBeProps } = config;
     self.encodeAndWrite(replMIB(stringPropOpen, stringPropBeProps).replaceAll('$0', self.propString(prop)));
