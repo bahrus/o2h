@@ -66,8 +66,18 @@ export class O2H extends EventTarget {
     //     const {do_array_item} = await import('./do_array_item.js');
     //     await do_array_item(this, obj, idx);
     // }
-    propString(prop) {
-        return typeof prop === 'string' ? prop : `[${prop}]`;
+    propString(prop, src) {
+        if (typeof prop === 'string')
+            return prop;
+        const asp = (this.contextualConfig || this.config).arraySummaryPath;
+        let summary = '';
+        if (asp !== undefined) {
+            const val = src[asp];
+            if (val !== undefined) {
+                summary = ` - ${val}`;
+            }
+        }
+        return typeof prop === 'string' ? prop : `[${prop}]${summary}`;
     }
 }
 export function replMIB(s, obj) {

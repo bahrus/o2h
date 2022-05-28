@@ -4,29 +4,30 @@ export interface O2HConfig {
     wrapperOpen: string;
     wrapperClose: string;
     objectPropOpen: string;
-    objectPropBeProps: MayItBe; //TODO
+    objectPropBeProps: MayItBe; 
     objectPropClose: string;
     stringPropOpen: string;
-    stringPropBeProps: MayItBe; //TODO
+    stringPropBeProps: MayItBe; 
     stringPropValue: string;
     stringPropClose: string;
     numberPropOpen: string;
-    numberPropBeProps: MayItBe; //TODO
+    numberPropBeProps: MayItBe; 
     numberPropValue: string;
     numberPropClose: string;
-    datePropOpen: string; //TODO
-    datePropBeProps: MayItBe; //TODO
+    datePropOpen: string; 
+    datePropBeProps: MayItBe; 
     datePropValue: string;
     datePropClose: string;
     booleanPropOpen: string;
-    booleanPropBeProps: MayItBe; //TODO
+    booleanPropBeProps: MayItBe; 
     booleanPropValue: string;
     booleanPropClose: string;
     arrayPropOpen: string;
-    arrayPropBeProps: MayItBe; //TODO
+    arraySummaryPath: string;
+    arrayPropBeProps: MayItBe; 
     arrayPropClose: string;
     arrayItemOpen: string;
     arrayItemClose: string;
     rootConfig?: O2HConfig;
-    pathOverrides?: {[key: string]: O2HConfig};//TODO
+    pathOverrides?: {[key: string]: O2HConfig};//WIP
 }

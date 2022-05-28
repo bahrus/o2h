@@ -77,8 +77,18 @@ export class O2H extends EventTarget{
     //     await do_array_item(this, obj, idx);
     // }
 
-    propString(prop: string | number){
-        return typeof prop === 'string' ? prop : `[${prop}]`;
+    propString(prop: string | number, src: any){
+        if(typeof prop === 'string') return prop;
+        const asp = (this.contextualConfig || this.config).arraySummaryPath;
+        let summary = '';
+        if(asp !== undefined){
+            const val = src[asp];
+            if(val !== undefined){
+                summary = ` - ${val}`;
+            }
+        }
+
+        return typeof prop === 'string' ? prop : `[${prop}]${summary}`;
     }
 
 }
