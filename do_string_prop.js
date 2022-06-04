@@ -4,7 +4,7 @@ export async function do_string_prop({ self, contextualConfig, stack }, srcObj, 
     const val = srcObj[prop];
     const { stringPropClose, stringPropOpen, stringPropValue, stringPropBeProps } = contextualConfig;
     const fullyQualifiedPath = stack.join('.');
-    self.encodeAndWrite(replMIB(stringPropOpen, stringPropBeProps).replaceAll('$0', self.propString(prop, val)));
-    self.encodeAndWrite(stringPropValue.replaceAll('$0', val).replaceAll('$1', fullyQualifiedPath));
+    self.encodeAndWrite(replMIB(stringPropOpen, stringPropBeProps).replaceAll('${label}', self.propString(prop, val)));
+    self.encodeAndWrite(stringPropValue.replaceAll('${value}', val).replaceAll('${path}', fullyQualifiedPath));
     self.encodeAndWrite(stringPropClose);
 }
