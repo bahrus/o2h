@@ -4,10 +4,9 @@ export interface O2HConfig {
     wrapper: [string, string];
     objectProp: string[];
     objectPropBeProps: MayItBe; 
-    stringPropOpen: string;
+    stringProp: [string, string];
     stringPropBeProps: MayItBe; 
     stringPropValue: string;
-    stringPropClose: string;
     numberPropOpen: string;
     numberPropBeProps: MayItBe; 
     numberPropValue: string;
