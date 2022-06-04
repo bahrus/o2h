@@ -1,8 +1,7 @@
 {
     "wrapper": ["<form>","</form>"],
-    "objectPropOpen": "<details ${mib}><summary>${label}</summary>",
+    "objectProp": ["<details ${mib}><summary>${label}</summary>", "</details>"],
     "objectPropBeProps": "",
-    "objectPropClose": "</details>",
     "stringPropOpen": "<label>${label}:",
     "stringPropValue": "<input type='text' name='${path}' value='${value}' ${mib}>",
     "stringPropBeProps": "",
