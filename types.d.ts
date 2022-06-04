@@ -4,13 +4,12 @@ export interface O2HConfig {
     wrapper: [string, string];
     objectProp: string[];
     objectPropBeProps: MayItBe; 
-    stringProp: [string, string];
+    stringProp: string;
     stringPropBeProps: MayItBe; 
     stringPropValue: string;
-    numberPropOpen: string;
+    numberProp: string;
     numberPropBeProps: MayItBe; 
     numberPropValue: string;
-    numberPropClose: string;
     datePropOpen: string; 
     datePropBeProps: MayItBe; 
     datePropValue: string;
