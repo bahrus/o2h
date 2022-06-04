@@ -1,7 +1,7 @@
 export async function do_root({ config, encodeAndWrite, self }, srcObj) {
-    encodeAndWrite(config.wrapperOpen);
+    encodeAndWrite(config.wrapper[0]);
     for (const key in srcObj) {
         await self.do_prop(self, srcObj, key);
     }
-    encodeAndWrite(config.wrapperClose);
+    encodeAndWrite(config.wrapper[1]);
 }

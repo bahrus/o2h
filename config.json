@@ -1,6 +1,5 @@
 {
-    "wrapperOpen": "<form>",
-    "wrapperClose": "</form>",
+    "wrapper": ["<form>","</form>"],
     "objectPropOpen": "<details ${mib}><summary>${label}</summary>",
     "objectPropBeProps": "",
     "objectPropClose": "</details>",

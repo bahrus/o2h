@@ -1,7 +1,7 @@
 import {MayItBe} from 'may-it-be/types';
 
 export interface O2HConfig {
-    wrapperOpen: string;
+    wrapper: [string, string];
     wrapperClose: string;
     objectPropOpen: string;
     objectPropBeProps: MayItBe; 
