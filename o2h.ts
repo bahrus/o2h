@@ -2,7 +2,6 @@ import {O2HConfig} from './types';
 import {camelToLisp} from 'may-it-be/camelToLisp.js';
 import { MayItBe } from 'may-it-be';
 
-//export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
 export const mib = '${mib}';
 
 export function o2h(srcObj: any, encodeAndWrite: (s: string) => void, config?: O2HConfig){

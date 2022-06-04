@@ -1,5 +1,4 @@
 import { camelToLisp } from 'may-it-be/camelToLisp.js';
-//export const obj_guid = 'Gj+7fXxgsU+6wZhAAv2pSQ==';
 export const mib = '${mib}';
 export function o2h(srcObj, encodeAndWrite, config) {
     const o2hInstance = new O2H(srcObj, config, encodeAndWrite);

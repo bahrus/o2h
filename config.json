@@ -16,7 +16,7 @@
     "booleanPropBeProps": "",
     "booleanPropValue": "<input type='checkbox'  name='${path}' ${checked} ${mib}>",
     "booleanPropClose": "</label>",
-    "arrayPropOpen": "<details><summary>$0</summary>",
+    "arrayPropOpen": "<details><summary>${label}</summary>",
     "arraySummaryPath": "name",
     "arrayPropBeProps": "",
     "arrayPropClose": "</details>",
