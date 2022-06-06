@@ -16,10 +16,9 @@ export interface O2HConfig {
     datePropClose: string;
     booleanProp: string;
     booleanPropBeProps: MayItBe; 
-    arrayPropOpen: string;
+    arrayProp: string;
     arraySummaryPath: string;
     arrayPropBeProps: MayItBe; 
-    arrayPropClose: string;
     arrayItemOpen: string;
     arrayItemClose: string;
     rootConfig?: O2HConfig;
