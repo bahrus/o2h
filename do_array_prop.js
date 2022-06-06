@@ -1,9 +1,8 @@
-import { replMIB } from './o2h.js';
 export async function do_array_prop({ self, contextualConfig }, srcObj, prop) {
     console.log('do_array_prop');
     const val = srcObj[prop];
-    const { arrayProp, arrayPropBeProps } = contextualConfig;
-    self.encodeAndWrite(replMIB(arrayProp[0], arrayPropBeProps).replaceAll('${label}', self.propString(prop, val)));
+    const { arrayProp } = contextualConfig;
+    self.encodeAndWrite(arrayProp[0].replaceAll('${label}', self.propString(prop, val)));
     for (let i = 0, len = val.length; i < len; i++) {
         await self.do_prop(self, val, i);
     }
