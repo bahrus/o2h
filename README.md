@@ -91,3 +91,5 @@ Outputs:
     </details>
 </form>
 ```
+
+TODO:  support use of be-definitive for arrays.
