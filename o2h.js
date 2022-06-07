@@ -1,4 +1,3 @@
-import { camelToLisp } from 'may-it-be/camelToLisp.js';
 export const mib = '${mib}';
 export function o2h(srcObj, encodeAndWrite, config) {
     const o2hInstance = new O2H(srcObj, config, encodeAndWrite);
@@ -78,14 +77,4 @@ export class O2H extends EventTarget {
         }
         return typeof prop === 'string' ? prop : `[${prop}]${summary}`;
     }
-}
-export function replMIB(s, obj) {
-    if (obj === undefined) {
-        return s.replace(mib, '');
-    }
-    const out = [];
-    for (const key in obj) {
-        out.push(`${camelToLisp(key)}='${JSON.stringify(obj[key])}'`);
-    }
-    return s.replace(mib, out.join(' '));
 }

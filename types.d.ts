@@ -16,5 +16,9 @@ export interface O2HConfig {
     arrayItemOpen: string;
     arrayItemClose: string;
     rootConfig?: O2HConfig;
-    pathOverrides?: {[key: string]: O2HConfig};//WIP
+    pathOverrides?: {[key: string]: O2HConfig};
+    objMatchOverrides?: [{ //TODO
+        ifAllOf: string[],
+        then: O2HConfig
+    }]
 }

@@ -1,4 +1,4 @@
-import {O2H, replMIB} from './o2h.js';
+import {O2H} from './o2h.js';
 export async function do_boolean_prop({self, contextualConfig, stack}: O2H, srcObj: any, prop: string | number){
     const val = srcObj[prop];
     const {booleanProp} = contextualConfig;

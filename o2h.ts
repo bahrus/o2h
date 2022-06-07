@@ -92,13 +92,3 @@ export class O2H extends EventTarget{
 
 }
 
-export function replMIB(s: string, obj?: MayItBe){
-    if(obj === undefined){
-        return s.replace(mib, '');
-    }
-    const out: string[] = [];
-    for(const key in obj){
-        out.push(`${camelToLisp(key)}='${JSON.stringify((<any>obj)[key])}'`)
-    }
-    return s.replace(mib, out.join(' '));
-}

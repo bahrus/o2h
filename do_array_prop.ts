@@ -1,4 +1,4 @@
-import {o2h, O2H, replMIB} from './o2h.js';
+import {o2h, O2H} from './o2h.js';
 export async function do_array_prop({self, contextualConfig}: O2H, srcObj: any, prop: string | number){
     console.log('do_array_prop');
     const val = srcObj[prop] as any[];
