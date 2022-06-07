@@ -8,6 +8,7 @@ export interface O2HConfig {
     dateProp: string; 
     booleanProp: string;
     arrayProp: string;
+    arraySummaryPath?: string;
     pathOverrides?: {[key: string]: O2HConfig};
     objMatchOverrides?: [{ //TODO
         ifAllOf: string[],
