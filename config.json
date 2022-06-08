@@ -5,7 +5,5 @@
     "numberProp": "<label>${label}: <input type='number'  name='${path}'  value='${value}' ${mib}></label>",
     "booleanProp": "<label>${label}: <input type='checkbox'  name='${path}' ${checked} ${mib}></label>",
     "arrayProp": ["<details><summary>${label}</summary>", "</details>"],
-    "arraySummaryPath": "name",
-    "arrayItemOpen": "",
-    "arrayItemClose": ""
+    "arraySummaryPath": "name"
 }
