@@ -1,12 +1,9 @@
 {
     "wrapper": ["<form>","</form>"],
-    "objectProp": ["<details ${mib}><summary>${label}</summary>", "</details>"],
-    "objectPropBeProps": "",
+    "objectProp": ["<details><summary>${label}</summary>", "</details>"],
     "stringProp": "<label>${label}: <input type='text' name='${path}' value='${value}' ${mib}></label>",
     "numberProp": "<label>${label}: <input type='number'  name='${path}'  value='${value}' ${mib}></label>",
-    "numberPropBeProps": "",
     "booleanProp": "<label>${label}: <input type='checkbox'  name='${path}' ${checked} ${mib}></label>",
-    "booleanPropBeProps": "",
     "arrayProp": ["<details><summary>${label}</summary>", "</details>"],
     "arraySummaryPath": "name",
     "arrayPropBeProps": "",
