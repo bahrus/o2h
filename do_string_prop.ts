@@ -1,7 +1,7 @@
-import {O2H, replMIB} from './o2h.js';
+import {O2H} from './o2h.js';
 export async function do_string_prop({self, contextualConfig, stack}: O2H, srcObj: any, prop: string | number){
     const val = srcObj[prop];
-    const {stringProp, stringPropValue} = contextualConfig;
+    const {stringProp} = contextualConfig;
     const fullyQualifiedPath= stack.join('.');
     self.encodeAndWrite(
         stringProp

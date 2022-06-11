@@ -1,6 +1,6 @@
 import {O2HConfig} from './types';
 import {camelToLisp} from 'may-it-be/camelToLisp.js';
-import { MayItBe } from 'may-it-be';
+
 
 export const mib = '${mib}';
 
@@ -26,7 +26,7 @@ export class O2H extends EventTarget{
             config = configJSON.default;
             self.config = config;
         }
-        config!.rootConfig = config;
+        //config!.rootConfig = config;
         const {do_root} = await import('./do_root.js');
         await do_root(this, srcObj);
     }
