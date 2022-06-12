@@ -1,13 +1,40 @@
 import {O2H} from './o2h.js';
-export async function do_boolean_prop({self, contextualConfig, stack}: O2H, srcObj: any, prop: string | number){
+import {o2a} from './o2a.js';
+export async function do_boolean_prop({self, contextualConfig, stack, encodeAndWrite}: O2H, srcObj: any, prop: string | number){
     const val = srcObj[prop];
+    console.log(val);
+    const label =  self.propString(prop, val);
     const {booleanProp} = contextualConfig;
     const fullyQualifiedPath= stack.join('.');
-    self.encodeAndWrite(
-        booleanProp
-        .replaceAll('${label}', self.propString(prop, val))
-        .replaceAll('${checked}', val ? 'checked' : '')
-        .replaceAll('${path}', fullyQualifiedPath)
-    );
+    let isStatic = true;
+    for(const part of booleanProp){
+        if(isStatic){
+            encodeAndWrite(part as string);
+            isStatic = !isStatic;
+            continue;
+        }
+        isStatic = !isStatic;
+        switch(typeof part){
+            case 'string':
+                switch(part){
+                    case 'label':
+                        encodeAndWrite(label);
+                        break;
+                    case 'path':
+                        encodeAndWrite(fullyQualifiedPath);
+                        break;
+                    case 'checked':
+                        if(val) encodeAndWrite('checked');
+                        break;
+                    default:
+                        throw 'NI'; //not implemented
+                }
+                break;
+            case 'object':
+                o2a(part, encodeAndWrite);
+                break;
+        }
+    }
+
 
 }
