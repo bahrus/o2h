@@ -4,7 +4,7 @@ export interface O2HConfig {
     wrapper: strOrObjArr;
     objectProp: strOrObjArr;
     stringProp: strOrObjArr;
-    numberProp: string;
+    numberProp: strOrObjArr;
     dateProp: string; 
     booleanProp: string;
     arrayProp: string;

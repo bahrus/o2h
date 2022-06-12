@@ -2,7 +2,6 @@ import { o2a } from './o2a.js';
 export async function do_object_prop({ self, contextualConfig, encodeAndWrite }, srcObj, prop) {
     const val = srcObj[prop];
     const label = self.propString(prop, val);
-    console.log({ label });
     const { objectProp } = contextualConfig;
     let isStatic = true;
     for (const part of objectProp) {
