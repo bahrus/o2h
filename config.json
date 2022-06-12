@@ -16,6 +16,12 @@
             ": <input type='checkbox' name='", "path", "' ", "checked", 
         "></label>"
     ],
-    "arrayProp": ["<details><summary>${label}</summary>", "</details>"],
+    "arrayProp": [
+        "<details><summary>", 
+            "label",
+        "</summary>", 
+            "children",
+        "</details>"
+    ],
     "arraySummaryPath": "name"
 }

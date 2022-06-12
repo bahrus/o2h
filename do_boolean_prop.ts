@@ -2,7 +2,6 @@ import {O2H} from './o2h.js';
 import {o2a} from './o2a.js';
 export async function do_boolean_prop({self, contextualConfig, stack, encodeAndWrite}: O2H, srcObj: any, prop: string | number){
     const val = srcObj[prop];
-    console.log(val);
     const label =  self.propString(prop, val);
     const {booleanProp} = contextualConfig;
     const fullyQualifiedPath= stack.join('.');
