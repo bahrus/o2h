@@ -2,7 +2,7 @@ type strOrObjArr = (string | object)[];
 
 export interface O2HConfig {
     wrapper: strOrObjArr;
-    objectProp: string[];
+    objectProp: strOrObjArr;
     stringProp: string;
     numberProp: string;
     dateProp: string; 

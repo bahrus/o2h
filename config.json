@@ -1,6 +1,6 @@
 {
     "wrapper": ["<form>", "children", "</form>"],
-    "objectProp": ["<details><summary>${label}</summary>", "</details>"],
+    "objectProp": ["<details><summary>", "label", "</summary>", "children", "</details>"],
     "stringProp": "<label>${label}: <input type='text' name='${path}' value='${value}' ${mib}></label>",
     "numberProp": "<label>${label}: <input type='number'  name='${path}'  value='${value}' ${mib}></label>",
     "booleanProp": "<label>${label}: <input type='checkbox'  name='${path}' ${checked} ${mib}></label>",
