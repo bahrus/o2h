@@ -1,7 +1,7 @@
-import {MayItBe} from 'may-it-be/types';
+type strOrObjArr = (string | object)[];
 
 export interface O2HConfig {
-    wrapper: string | (string | object)[];
+    wrapper: strOrObjArr;
     objectProp: string[];
     stringProp: string;
     numberProp: string;
