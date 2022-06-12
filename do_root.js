@@ -19,6 +19,7 @@ export async function do_root({ config, encodeAndWrite, self }, srcObj) {
                     default:
                         throw 'NI'; //not implemented
                 }
+                break;
             case 'object':
                 o2a(part, encodeAndWrite);
                 break;
