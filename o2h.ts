@@ -13,9 +13,12 @@ export class O2H extends EventTarget{
     self = this;
     stack: (string | number)[] = [];
     contextualConfig!: O2HConfig;
+    done = false;
+
     constructor(public srcObj: any, public config: O2HConfig, public encodeAndWrite: (s: string) => void) {
         super();
         this.do_root(this, srcObj).then(() => {
+            this.done = true;
             this.dispatchEvent(new Event('done'));
         });
     }
@@ -26,7 +29,6 @@ export class O2H extends EventTarget{
             config = configJSON.default;
             self.config = config;
         }
-        //config!.rootConfig = config;
         const {do_root} = await import('./do_root.js');
         await do_root(this, srcObj);
     }
