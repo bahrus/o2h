@@ -31,7 +31,9 @@ export class O2H extends EventTarget {
             config = configJSON.default;
             self.config = config;
         }
+        console.log('get do_root.js');
         const { do_root } = await import('./do_root.js');
+        console.log('call do_root');
         await do_root(this, srcObj);
     }
     async do_object({}, obj) {
