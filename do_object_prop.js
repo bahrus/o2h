@@ -6,7 +6,7 @@ export async function do_object_prop({ self, contextualConfig, encodeAndWrite, s
     let label = self.propString(prop, val);
     if (makeObjectPropLabelTitleCase)
         label = titleCase(label);
-    const dashedPath = stack.join('-');
+    const dashedPath = self.toDashPath();
     let isStatic = true;
     for (const part of objectProp) {
         if (isStatic) {

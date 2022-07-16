@@ -80,6 +80,9 @@ export class O2H extends EventTarget {
         }
         return typeof prop === 'string' ? prop : `[${prop}]${summary}`;
     }
+    toDashPath() {
+        return this.stack.filter(x => typeof x === 'string').join('-');
+    }
 }
 const title_case_re1 = /^[-_]*(.)/;
 const title_case_re2 = /[-_]+(.)/g;
