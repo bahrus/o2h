@@ -96,3 +96,10 @@ export class O2H extends EventTarget{
 
 }
 
+const title_case_re1 = /^[-_]*(.)/;
+const title_case_re2 = /[-_]+(.)/g;
+//https://stackoverflow.com/questions/64489395/converting-snake-case-string-to-title-case
+export const titleCase = (s: string) =>
+  s.replace (title_case_re1, (_, c) => c.toUpperCase())       // Initial char (after -/_)
+   .replace (title_case_re2, (_, c) => ' ' + c.toUpperCase()) // First char after each -/_
+

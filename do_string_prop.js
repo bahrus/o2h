@@ -1,8 +1,12 @@
+import { titleCase } from './o2h.js';
 import { o2a } from './o2a.js';
 export async function do_string_prop({ self, contextualConfig, stack, encodeAndWrite }, srcObj, prop) {
+    const { stringProp, makeStringPropLabelTitleCase } = contextualConfig;
     const val = srcObj[prop];
-    const label = self.propString(prop, val);
-    const { stringProp } = contextualConfig;
+    let label = self.propString(prop, val);
+    if (makeStringPropLabelTitleCase) {
+        label = titleCase(label);
+    }
     const fullyQualifiedPath = stack.join('.');
     let isStatic = true;
     for (const part of stringProp) {

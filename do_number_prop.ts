@@ -1,9 +1,10 @@
-import {O2H} from './o2h.js';
+import {O2H, titleCase} from './o2h.js';
 import {o2a} from './o2a.js';
 export async function do_number_prop({self, contextualConfig, stack, encodeAndWrite}: O2H, srcObj: any, prop: string | number){
+    const {numberProp, makeNumberPropLabelTitleCase} = contextualConfig;
     const val = srcObj[prop];
-    const label = self.propString(prop, val);
-    const {numberProp} = contextualConfig;
+    let label = self.propString(prop, val);
+    if(makeNumberPropLabelTitleCase) label = titleCase(label);
     const fullyQualifiedPath= stack.join('.');
     let isStatic = true;
     for(const part of numberProp){

@@ -1,8 +1,10 @@
+import { titleCase } from './o2h.js';
 import { o2a } from './o2a.js';
 export async function do_array_prop({ self, contextualConfig, encodeAndWrite }, srcObj, prop) {
-    const val = srcObj[prop];
-    const label = self.propString(prop, val);
     const { arrayProp } = contextualConfig;
+    const val = srcObj[prop];
+    let label = self.propString(prop, val);
+    label = titleCase(label);
     let isStatic = true;
     for (const part of arrayProp) {
         if (isStatic) {

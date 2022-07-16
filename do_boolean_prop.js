@@ -1,8 +1,11 @@
+import { titleCase } from './o2h.js';
 import { o2a } from './o2a.js';
 export async function do_boolean_prop({ self, contextualConfig, stack, encodeAndWrite }, srcObj, prop) {
+    const { booleanProp, makeBooleanPropLabelTitleCase } = contextualConfig;
     const val = srcObj[prop];
-    const label = self.propString(prop, val);
-    const { booleanProp } = contextualConfig;
+    let label = self.propString(prop, val);
+    if (makeBooleanPropLabelTitleCase)
+        label = titleCase(label);
     const fullyQualifiedPath = stack.join('.');
     let isStatic = true;
     for (const part of booleanProp) {
