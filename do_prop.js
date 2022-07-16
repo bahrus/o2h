@@ -19,7 +19,8 @@ export async function do_prop({ self, config }, srcObj, prop) {
                 await self['do_' + typ + '_prop'](self, srcObj, prop);
             }
             catch (e) {
-                console.error('do_' + typ + '_prop not found');
+                console.error('do_' + typ + '_prop failed.');
+                console.error(e);
                 throw e;
             }
     }
