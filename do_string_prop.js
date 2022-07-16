@@ -33,7 +33,7 @@ export async function do_string_prop({ self, contextualConfig, stack, encodeAndW
                         encodeAndWrite(val);
                         break;
                     default:
-                        throw 'NI'; //not implemented
+                        throw part + ' not supported';
                 }
                 break;
             case 'object':
