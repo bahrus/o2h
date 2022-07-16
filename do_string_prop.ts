@@ -9,6 +9,7 @@ export async function do_string_prop({self, contextualConfig, stack, encodeAndWr
     }
     
     const fullyQualifiedPath= stack.join('.');
+    const dashedPath= stack.join('-');
     let isStatic = true;
     for(const part of stringProp){
         if(isStatic){
@@ -25,6 +26,9 @@ export async function do_string_prop({self, contextualConfig, stack, encodeAndWr
                         break;
                     case 'path':
                         encodeAndWrite(fullyQualifiedPath);
+                        break;
+                    case 'dashed-path':
+                        encodeAndWrite(dashedPath);
                         break;
                     case 'value':
                         encodeAndWrite(val);
