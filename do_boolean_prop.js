@@ -7,6 +7,7 @@ export async function do_boolean_prop({ self, contextualConfig, stack, encodeAnd
     if (makeBooleanPropLabelTitleCase)
         label = titleCase(label);
     const fullyQualifiedPath = stack.join('.');
+    const dashedPath = self.toWebComponentName();
     let isStatic = true;
     for (const part of booleanProp) {
         if (isStatic) {
@@ -23,6 +24,10 @@ export async function do_boolean_prop({ self, contextualConfig, stack, encodeAnd
                         break;
                     case 'path':
                         encodeAndWrite(fullyQualifiedPath);
+                        break;
+                    case 'dashed-path':
+                        if (dashedPath !== undefined)
+                            encodeAndWrite(dashedPath);
                         break;
                     case 'checked':
                         if (val)

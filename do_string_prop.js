@@ -27,7 +27,8 @@ export async function do_string_prop({ self, contextualConfig, stack, encodeAndW
                         encodeAndWrite(fullyQualifiedPath);
                         break;
                     case 'dashed-path':
-                        encodeAndWrite(dashedPath);
+                        if (dashedPath !== undefined)
+                            encodeAndWrite(dashedPath);
                         break;
                     case 'value':
                         encodeAndWrite(val);

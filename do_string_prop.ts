@@ -7,9 +7,8 @@ export async function do_string_prop({self, contextualConfig, stack, encodeAndWr
     if(makeStringPropLabelTitleCase){
         label = titleCase(label);
     }
-    
     const fullyQualifiedPath= stack.join('.');
-    const dashedPath= self.toWebComponentName();
+    const dashedPath = self.toWebComponentName();
     let isStatic = true;
     for(const part of stringProp){
         if(isStatic){
@@ -28,7 +27,7 @@ export async function do_string_prop({self, contextualConfig, stack, encodeAndWr
                         encodeAndWrite(fullyQualifiedPath);
                         break;
                     case 'dashed-path':
-                        encodeAndWrite(dashedPath);
+                        if(dashedPath !== undefined) encodeAndWrite(dashedPath);
                         break;
                     case 'value':
                         encodeAndWrite(val);

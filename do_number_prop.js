@@ -7,6 +7,7 @@ export async function do_number_prop({ self, contextualConfig, stack, encodeAndW
     if (makeNumberPropLabelTitleCase)
         label = titleCase(label);
     const fullyQualifiedPath = stack.join('.');
+    const dashedPath = self.toWebComponentName();
     let isStatic = true;
     for (const part of numberProp) {
         if (isStatic) {
@@ -23,6 +24,10 @@ export async function do_number_prop({ self, contextualConfig, stack, encodeAndW
                         break;
                     case 'path':
                         encodeAndWrite(fullyQualifiedPath);
+                        break;
+                    case 'dashed-path':
+                        if (dashedPath !== undefined)
+                            encodeAndWrite(dashedPath);
                         break;
                     case 'value':
                         encodeAndWrite(val);

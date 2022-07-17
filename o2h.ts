@@ -104,7 +104,7 @@ export class O2H extends EventTarget{
         // const replaceString = propsWithKeyPatterns[prevKey];
         // if(replaceString === undefined) return prevKey + '-' + lastKey;
         // return prevKey + '-' + replaceString;
-        const filteredStack = this.stack.filter(x => typeof x === 'string');
+        const filteredStack = this.stack.filter(x => typeof x === 'string') as string[];
         if(filteredStack.length === 0) return undefined;
         const adjustedStack = filteredStack.map((x, idx) => {
             if(idx === 0) return x;
