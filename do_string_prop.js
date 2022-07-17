@@ -8,7 +8,7 @@ export async function do_string_prop({ self, contextualConfig, stack, encodeAndW
         label = titleCase(label);
     }
     const fullyQualifiedPath = stack.join('.');
-    const dashedPath = self.toDashPath();
+    const dashedPath = self.toWebComponentName();
     let isStatic = true;
     for (const part of stringProp) {
         if (isStatic) {

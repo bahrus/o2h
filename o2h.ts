@@ -94,8 +94,16 @@ export class O2H extends EventTarget{
         return typeof prop === 'string' ? prop : `[${prop}]${summary}`;
     }
 
-    toDashPath(){
-        return this.stack.filter(x => typeof x ==='string').join('-');
+    toWebComponentName(){
+        const {propsWithKeyPatterns} = this.contextualConfig;
+        const filteredStack = this.stack.filter(x => typeof x === 'string');
+        if(filteredStack.length === 0) return undefined;
+        const lastKey = filteredStack.pop();
+        const prevKey = filteredStack.pop();
+        if(prevKey === undefined) return lastKey;
+        const replaceString = propsWithKeyPatterns[prevKey];
+        if(replaceString === undefined) return prevKey + '-' + lastKey;
+        return prevKey + '-' + replaceString;
     }
 
 }

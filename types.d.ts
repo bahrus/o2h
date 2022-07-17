@@ -23,4 +23,5 @@ export interface O2HConfig {
     makeNumberPropLabelTitleCase: boolean,
     makeBooleanPropLabelTitleCase: boolean,
     makeArrayPropLabelTitleCase: boolean,
+    propsWithKeyPatterns: {[key: string]: string},
 }
