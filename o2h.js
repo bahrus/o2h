@@ -82,17 +82,31 @@ export class O2H extends EventTarget {
     }
     toWebComponentName() {
         const { propsWithKeyPatterns } = this.contextualConfig;
+        // const filteredStack = this.stack.filter(x => typeof x === 'string');
+        // if(filteredStack.length === 0) return undefined;
+        // const lastKey = filteredStack.pop();
+        // const prevKey = filteredStack.pop();
+        // if(prevKey === undefined) return lastKey;
+        // const replaceString = propsWithKeyPatterns[prevKey];
+        // if(replaceString === undefined) return prevKey + '-' + lastKey;
+        // return prevKey + '-' + replaceString;
         const filteredStack = this.stack.filter(x => typeof x === 'string');
         if (filteredStack.length === 0)
             return undefined;
-        const lastKey = filteredStack.pop();
-        const prevKey = filteredStack.pop();
+        const adjustedStack = filteredStack.map((x, idx) => {
+            if (idx === 0)
+                return x;
+            const prevKey = filteredStack[idx - 1];
+            const replaceString = propsWithKeyPatterns[prevKey];
+            if (replaceString !== undefined)
+                return replaceString;
+            return x;
+        });
+        const lastKey = adjustedStack.pop();
+        const prevKey = adjustedStack.pop();
         if (prevKey === undefined)
             return lastKey;
-        const replaceString = propsWithKeyPatterns[prevKey];
-        if (replaceString === undefined)
-            return prevKey + '-' + lastKey;
-        return prevKey + '-' + replaceString;
+        return prevKey + '-' + lastKey;
     }
 }
 const title_case_re1 = /^[-_]*(.)/;
