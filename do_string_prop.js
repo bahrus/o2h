@@ -4,6 +4,7 @@ export async function do_string_prop({ self, contextualConfig, stack, encodeAndW
     const { stringProp, makeStringPropLabelTitleCase } = contextualConfig;
     const val = srcObj[prop];
     let label = self.propString(prop, val);
+    const key = label;
     if (makeStringPropLabelTitleCase) {
         label = titleCase(label);
     }
@@ -20,6 +21,9 @@ export async function do_string_prop({ self, contextualConfig, stack, encodeAndW
         switch (typeof part) {
             case 'string':
                 switch (part) {
+                    case 'key':
+                        encodeAndWrite(key);
+                        break;
                     case 'label':
                         encodeAndWrite(label);
                         break;

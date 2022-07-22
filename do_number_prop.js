@@ -4,6 +4,7 @@ export async function do_number_prop({ self, contextualConfig, stack, encodeAndW
     const { numberProp, makeNumberPropLabelTitleCase } = contextualConfig;
     const val = srcObj[prop];
     let label = self.propString(prop, val);
+    const key = label;
     if (makeNumberPropLabelTitleCase)
         label = titleCase(label);
     const fullyQualifiedPath = stack.join('.');
@@ -19,6 +20,9 @@ export async function do_number_prop({ self, contextualConfig, stack, encodeAndW
         switch (typeof part) {
             case 'string':
                 switch (part) {
+                    case 'key':
+                        encodeAndWrite(key);
+                        break;
                     case 'label':
                         encodeAndWrite(label);
                         break;

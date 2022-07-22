@@ -24,4 +24,6 @@ export interface O2HConfig {
     makeBooleanPropLabelTitleCase: boolean,
     makeArrayPropLabelTitleCase: boolean,
     propsWithKeyPatterns: {[key: string]: string},
+    propsWithTableStructures: string[]; //TODO
+    duckType: boolean;
 }

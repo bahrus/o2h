@@ -1,5 +1,5 @@
 export async function do_prop({ self, config }, srcObj, prop) {
-    const val = srcObj[prop];
+    let val = srcObj[prop];
     const typ = typeof val;
     switch (typ) {
         case 'object':

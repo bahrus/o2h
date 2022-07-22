@@ -1,7 +1,8 @@
 import {O2H/*obj_guid*/} from './o2h.js';
 export async function do_prop({self, config}: O2H, srcObj: any, prop: string | number){
-    const val = srcObj[prop];
+    let val = srcObj[prop];
     const typ = typeof val;
+    
     switch(typ){
         case 'object':
             // if(val[obj_guid]){

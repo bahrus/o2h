@@ -4,6 +4,7 @@ export async function do_boolean_prop({ self, contextualConfig, stack, encodeAnd
     const { booleanProp, makeBooleanPropLabelTitleCase } = contextualConfig;
     const val = srcObj[prop];
     let label = self.propString(prop, val);
+    const key = label;
     if (makeBooleanPropLabelTitleCase)
         label = titleCase(label);
     const fullyQualifiedPath = stack.join('.');
@@ -19,6 +20,9 @@ export async function do_boolean_prop({ self, contextualConfig, stack, encodeAnd
         switch (typeof part) {
             case 'string':
                 switch (part) {
+                    case 'key':
+                        encodeAndWrite(key);
+                        break;
                     case 'label':
                         encodeAndWrite(label);
                         break;
