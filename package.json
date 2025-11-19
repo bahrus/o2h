@@ -19,16 +19,18 @@
   },
   "types": "types.d.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "serve": "node node_modules/may-it-serve/serve.js",
-    "package-check": "package-check"
+    "serve": "node ./node_modules/spa-ssi/serve.js",
+    "test": "playwright test",
+    "doc": "wca analyze trans-render.js --outFile custom-elements.json",
+    "package-check": "package-check",
+    "safari": "npx playwright wk http://localhost:8000",
+    "update": "ncu -u && npm install"
   },
   "dependencies": {
-    "may-it-be": "0.0.162"
   },
   "devDependencies": {
-    "may-it-serve": "0.0.0",
-    "@skypack/package-check": "0.2.2"
+    "@playwright/test": "1.56.1",
+    "spa-ssi": "0.0.23"
   },
   "repository": {
     "type": "git",
