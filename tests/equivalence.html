@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>o2h vs builtIns.tree</title>
+  <script type="importmap">{ "imports": { "assign-gingerly/": "../node_modules/assign-gingerly/" } }</script>
+</head>
+<body>
+  <pre id="differences"></pre>
+  <div id="test-complete" style="display:none;" data-status=""></div>
+  <script type="module">
+    import { o2h } from '../o2h.js';
+    import { assignFrom, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
+    import { config, pipes, managers, initialVm } from '../demo/treeDefinition.js';
+
+    const differences = [];
+    const complete = document.getElementById('test-complete');
+    try {
+      const vm = initialVm(await (await fetch('../demo/data/launch.json')).json());
+
+      // o2h's HTML, parsed
+      const { html, residue } = o2h(config, vm, { pipes, managers });
+      const server = document.createElement('div');
+      server.innerHTML = html;
+
+      // builtIns.tree, from the same definition
+      const client = document.createElement('div');
+      await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, {
+        from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
+      });
+
+      // Node by node; the one intended difference is itemscope="<manager>", which o2h adds for the client
+      const attrs = el => [...el.attributes]
+        .filter(a => !(a.name === 'itemscope' && a.value in managers))
+        .map(a => `${a.name}=${a.value}`).sort().join(' ');
+      const walk = (a, b, path) => {
+        if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) return differences.push(`${path}: ${a.nodeName} vs ${b.nodeName}`);
+        if (a.nodeType !== 1) {
+          if (a.data !== b.data) differences.push(`${path}: ${JSON.stringify(a.data)} vs ${JSON.stringify(b.data)}`);
+          return;
+        }
+        if (attrs(a) !== attrs(b)) differences.push(`${path} <${a.localName}>: [${attrs(a)}] vs [${attrs(b)}]`);
+        if (a.childNodes.length !== b.childNodes.length) return differences.push(`${path} <${a.localName}>: ${a.childNodes.length} vs ${b.childNodes.length} children`);
+        a.childNodes.forEach((child, i) => walk(child, b.childNodes[i], `${path}/${i}`));
+      };
+      walk(server, client, '');
+
+      // The residue finishes the server HTML: the managers attach (by their itemscope names)
+      const itemscopeRegistry = new ItemscopeRegistry(managers);
+      assignFrom(server, residue.pattern, { at: residue.at, from: {}, registry: { itemscopeRegistry } });
+      await itemscopeRegistry.whenDefined('rocket-manager');
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const rocket = server.querySelector('.rocket');
+      if (rocket.ish?.title !== 'Rocket: Falcon 9') differences.push(`residue: the rocket manager wasn't attached (${rocket.ish?.title})`);
+    } catch (e) {
+      differences.push(`error: ${e.message}`);
+    }
+    document.getElementById('differences').textContent = differences.join('\n');
+    complete.dataset.status = differences.length === 0 ? 'success' : 'failure';
+  </script>
+</body>
+</html>

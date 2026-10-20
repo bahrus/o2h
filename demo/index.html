@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>o2h demo: a tree config + an API response → HTML</title>
+    <script type="importmap">{ "imports": { "assign-gingerly/": "../node_modules/assign-gingerly/" } }</script>
+    <style>
+        :root {
+            --fg: #1d2330;
+            --muted: #5b6475;
+            --line: #d9dee7;
+            --card: #f7f9fc;
+            --accent: #2f6fd0;
+            --ok: #1f8a4c;
+            --bad: #c0392b;
+            --pending: #a86b00;
+        }
+        body {
+            font-family: system-ui, sans-serif;
+            color: var(--fg);
+            margin: 2rem auto;
+            max-width: 960px;
+            padding: 0 1rem;
+            line-height: 1.45;
+        }
+        h1 { margin-bottom: 0.25rem; }
+        .lede { color: var(--muted); margin-top: 0; }
+        code { background: #eef1f6; padding: 0 0.25em; border-radius: 3px; }
+
+        .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+        button {
+            padding: 0.45rem 0.9rem;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font: inherit;
+        }
+        button:hover { border-color: var(--accent); }
+
+        /* The target. builtIns.tree adds no itemprop, so children are placed by
+           the class names their patterns set. */
+        .launch {
+            display: grid;
+            grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-areas:
+                "patch    name     name"
+                "patch    status   status"
+                "patch    date     date"
+                "details  details  details"
+                "mission  mission  mission"
+                "links    links    links"
+                "rocket   rocket   crew"
+                "cores    cores    failures"
+                "timeline timeline timeline";
+            gap: 0.75rem 1.25rem;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 1.25rem;
+            min-height: 120px;
+        }
+        .launch > .patch    { grid-area: patch; }
+        .launch > .name     { grid-area: name; margin: 0; }
+        .launch > .badge    { grid-area: status; justify-self: start; }
+        .launch > .date     { grid-area: date; color: var(--muted); }
+        .launch > .details  { grid-area: details; margin: 0; }
+        .launch > .links    { grid-area: links; }
+        .launch > .rocket   { grid-area: rocket; }
+        .launch > .crew     { grid-area: crew; }
+        .launch > .cores    { grid-area: cores; }
+        .launch > .failures { grid-area: failures; }
+        .launch > .mission  { grid-area: mission; }
+        .launch > .timeline { grid-area: timeline; }
+        @media (max-width: 640px) {
+            .launch {
+                grid-template-columns: 80px minmax(0, 1fr);
+                grid-template-areas:
+                    "patch name" "patch status" "patch date"
+                    "details details" "mission mission" "links links"
+                    "rocket rocket" "crew crew" "cores cores" "failures failures" "timeline timeline";
+            }
+            .patch { width: 80px; height: 80px; }
+        }
+
+        .patch { width: 112px; height: 112px; }
+        .badge {
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.15rem 0.6rem;
+            border-radius: 999px;
+            color: white;
+        }
+        .badge.ok { background: var(--ok); }
+        .badge.bad { background: var(--bad); }
+        .badge.pending { background: var(--pending); }
+        .details.empty { color: var(--muted); font-style: italic; }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+        }
+        .card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+        .card ul { margin: 0; padding-left: 1.1rem; }
+        .muted { color: var(--muted); }
+        .card small { display: block; color: var(--muted); }
+
+        .spec { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px dashed var(--line); padding: 0.3rem 0; }
+        .spec .label { color: var(--muted); }
+        .spec .inc { font-size: 0.75rem; padding: 0.1rem 0.5rem; margin-right: auto; }
+
+        .links { display: flex; gap: 1rem; align-items: center; }
+        .links ul { display: contents; }
+        .links li { list-style: none; }
+        .links a { color: var(--accent); }
+        .links.verifying::after { content: "verifying…"; color: var(--pending); font-size: 0.85rem; }
+        .links.verified::after { content: "✓ verified"; color: var(--ok); font-size: 0.85rem; }
+
+        /* Mission status: one card per phase, each with its own markup (a switch) */
+        .mission { border-left: 6px solid var(--line); }
+        .mission.scheduled { border-left-color: var(--accent); }
+        .mission.hold, .mission.unknown { border-left-color: var(--pending); }
+        .mission.in-flight, .mission.success { border-left-color: var(--ok); }
+        .mission.scrubbed, .mission.failure { border-left-color: var(--bad); }
+        .mission .big { font-size: 1.4rem; font-weight: 600; margin: 0.25rem 0; font-variant-numeric: tabular-nums; }
+        .mission p { margin: 0.25rem 0; }
+
+        /* Flight timeline: each event kind has its own markup (a switch per item) */
+        .timeline ol { list-style: none; padding: 0; margin: 0; }
+        .timeline li { display: flex; gap: 0.75rem; align-items: baseline; padding: 0.2rem 0; border-top: 1px dashed var(--line); }
+        .timeline .t { font-family: ui-monospace, monospace; font-size: 0.8rem; color: var(--muted); min-width: 5.5rem; }
+        .timeline .milestone strong { color: var(--ok); }
+        .timeline .anomaly { background: #fdf0ee; }
+        .timeline .anomaly strong { color: var(--bad); }
+        .timeline .anomaly em { color: var(--muted); }
+        .timeline .note { color: var(--muted); }
+
+        .panels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-top: 1.5rem; }
+        @media (max-width: 760px) { .panels { grid-template-columns: minmax(0, 1fr); } }
+        #log {
+            font-family: ui-monospace, monospace;
+            font-size: 0.8rem;
+            max-height: 360px;
+            overflow: auto;
+            margin: 0;
+            padding-left: 2.2rem;
+        }
+        #log li { margin: 0.1rem 0; }
+        #log .src { color: var(--accent); }
+        pre { font-size: 0.75rem; max-height: 360px; overflow: auto; background: var(--card); padding: 0.75rem; border-radius: 8px; }
+        .error { color: var(--bad); }
+        .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; }
+        @media (max-width: 1100px) { .columns { grid-template-columns: minmax(0, 1fr); } }
+        .columns h2 { font-size: 1.05rem; margin-bottom: 0.25rem; }
+        .columns .note { color: var(--muted); font-size: 0.85rem; margin-top: 0; }
+        body { max-width: 1400px; }
+        .verdict { font-weight: 600; }
+        .verdict.ok { color: var(--ok); }
+        .verdict.bad { color: var(--bad); }
+    </style>
+</head>
+<body>
+    <h1>o2h demo</h1>
+    <p class="lede">
+        <code>o2h(config, data, { pipes, managers })</code> renders a <code>builtIns.tree</code> config
+        (<a href="./treeDefinition.js">treeDefinition.js</a>, a copy of assign-gingerly's tree-demo definition) against an API response
+        (<a href="./data/launch.json">data/launch.json</a>) to an <strong>HTML string</strong>, as a server would.
+        This page runs it in the browser to show the result next to what <code>builtIns.tree</code> builds on the client from the same definition.
+        What HTML can't carry (properties, event listeners, manager values) comes back as a <strong>residue</strong>,
+        applied on the client with one <code>assignFrom</code> call.
+    </p>
+
+    <div class="controls">
+        <button id="apply-residue">Apply the residue</button>
+        <button id="toggle-units">Toggle units (client)</button>
+    </div>
+
+    <div class="columns">
+        <section>
+            <h2>o2h (server-rendered HTML)</h2>
+            <p class="note">The string from <code>o2h()</code>, assigned as innerHTML. Managers ran on the server, so their getters rendered.</p>
+            <article id="server" class="launch"></article>
+        </section>
+        <section>
+            <h2>builtIns.tree (client-rendered)</h2>
+            <p class="note">The same config and data, rendered by <code>builtIns.tree</code> in the browser.</p>
+            <article id="client" class="launch"></article>
+        </section>
+    </div>
+
+    <p>Same DOM: <span id="verdict" class="verdict"></span></p>
+
+    <div class="panels">
+        <section>
+            <h2>Event log</h2>
+            <ol id="log"></ol>
+        </section>
+        <section>
+            <h2>Residue</h2>
+            <pre id="residue"></pre>
+            <h2>Unrendered</h2>
+            <pre id="unrendered"></pre>
+        </section>
+    </div>
+    <section>
+        <h2>HTML from o2h</h2>
+        <pre id="html"></pre>
+    </section>
+
+    <script type="module">
+        import { o2h } from '../o2h.js';
+        import { assignFrom, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
+        import { config, pipes, managers, initialVm, setLog } from './treeDefinition.js';
+
+        const logEl = document.getElementById('log');
+        const log = (source, message) => {
+            const li = document.createElement('li');
+            const src = document.createElement('span');
+            src.className = 'src';
+            src.textContent = source;
+            li.append(src, ' ', message);
+            logEl.append(li);
+        };
+        setLog(log);
+
+        const response = await (await fetch('./data/launch.json')).json();
+        const vm = initialVm(response);
+
+        // "Server": the config and data in, an HTML string (and a residue) out
+        const { html, residue, unrendered } = o2h(config, vm, { pipes, managers });
+        const server = document.getElementById('server');
+        server.innerHTML = html;
+        document.getElementById('html').textContent = html;
+        document.getElementById('residue').textContent = JSON.stringify(residue, null, 2);
+        document.getElementById('unrendered').textContent = JSON.stringify(unrendered, null, 2);
+        log('o2h', `${html.length} characters of HTML, ${Object.keys(residue?.pattern ?? {}).length} residue entries`);
+
+        // Client: builtIns.tree, with the same definition (managers registered locally)
+        const itemscopeRegistry = new ItemscopeRegistry(managers);
+        const client = document.getElementById('client');
+        await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, { from: vm, pipes, registry: { itemscopeRegistry } });
+
+        // Compare the two, before either one changes (the links manager verifies asynchronously).
+        // One difference is intended: o2h names each manager with itemscope="<name>", so the client can
+        // attach it (builtIns.tree attaches managers without the attribute).
+        const comparable = article => {
+            const copy = article.cloneNode(true);
+            copy.removeAttribute('id');
+            for (const name of Object.keys(managers)) {
+                for (const el of copy.querySelectorAll(`[itemscope="${name}"]`)) el.removeAttribute('itemscope');
+            }
+            return copy;
+        };
+        const same = comparable(server).isEqualNode(comparable(client));
+        const verdict = document.getElementById('verdict');
+        verdict.textContent = same ? 'yes (apart from itemscope="<manager>" on managed elements, which o2h adds for the client)' : 'no (see the console)';
+        verdict.className = `verdict ${same ? 'ok' : 'bad'}`;
+        if (!same) console.log({ server: server.innerHTML, client: client.innerHTML });
+
+        // Finishing the server HTML on the client: one assignFrom with the residue
+        document.getElementById('apply-residue').addEventListener('click', () => {
+            if (!residue) return;
+            // The host receives `call`s from event bindings. A manager's own subtree isn't rebound here:
+            // that's builtIns.scope's job (see assign-gingerly's docs/scope.md).
+            const host = { increaseHeightByOne: () => log('host', 'increaseHeightByOne called (bind the card with builtIns.scope to rebind it)') };
+            assignFrom(server, residue.pattern, { at: residue.at, from: host, registry: { itemscopeRegistry } });
+            log('residue', `applied ${Object.keys(residue.pattern).length} entries`);
+        });
+        document.getElementById('toggle-units').addEventListener('click', () => {
+            const rocket = client.querySelector('.rocket');
+            rocket.ish.metric = !rocket.ish.metric;
+        });
+        document.body.dataset.done = 'true';
+    </script>
+</body>
+</html>

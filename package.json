@@ -11,23 +11,34 @@
     "transformer"
   ],
   "files": [
-    "*.*"
+    "o2h.js",
+    "o2h.ts",
+    "types/o2h/types.d.ts",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
-    ".": "./o2h.js",
-    "./o2h.js": "./o2h.js"
+    ".": {
+      "types": "./types/o2h/types.d.ts",
+      "default": "./o2h.js"
+    },
+    "./o2h.js": {
+      "types": "./types/o2h/types.d.ts",
+      "default": "./o2h.js"
+    }
   },
-  "types": "types.d.ts",
+  "types": "types/o2h/types.d.ts",
   "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
     "serve": "node ./node_modules/spa-ssi/serve.js",
     "test": "playwright test",
-    "doc": "wca analyze trans-render.js --outFile custom-elements.json",
     "package-check": "package-check",
     "safari": "npx playwright wk http://localhost:8000",
     "update": "ncu -u && npm install"
   },
   "dependencies": {
-    "assign-gingerly": "0.0.101"
+    "assign-gingerly": "0.0.102"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
