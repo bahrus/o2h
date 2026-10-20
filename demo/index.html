@@ -230,6 +230,7 @@
 
         // "Server": the config and data in, an HTML string (and a residue) out
         const { html, residue, unrendered } = o2h(config, vm, { pipes, managers });
+        console.log({residue, unrendered})
         const server = document.getElementById('server');
         server.innerHTML = html;
         document.getElementById('html').textContent = html;
