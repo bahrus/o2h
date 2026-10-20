@@ -47,8 +47,8 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(o2h(config, { ...vm, crew: [] }).html).toContain('<ul><li>None</li></ul>');
   });
 
-  test('hands what HTML can\'t carry to the residue, addressed by element paths', async () => {
-    const { o2h } = await import(url('o2h.js'));
+  test('hands what HTML can\'t carry to the residue, marking each element data-residue', async () => {
+    const { o2h, RESIDUE_STYLE } = await import(url('o2h.js'));
     const { tree } = await import(url('node_modules/assign-gingerly/DX/tree.js'));
     const config = {
       map: {
@@ -56,14 +56,17 @@ test.describe('o2h in Node (no DOM)', () => {
         form: tree`<form><input type="number" .valueAsNumber=${'?.qty'} .checked=${'?.agree'}><button @click=${'save'}>Save</button></form>`,
       },
     };
-    const { html, residue } = o2h(config, { intro: 1, form: { qty: 3, agree: true } }, { elementOffset: 1 });
+    const vm = { intro: 1, form: { qty: 3, agree: true } };
+    const { html, residue } = o2h(config, vm);
     // checked has an attribute (its default); valueAsNumber doesn't, so it goes to the residue
-    expect(html).toContain('<input type="number" checked>');
-    expect(residue).toEqual({
-      pattern: { '#[e1]': { valueAsNumber: 3 }, '#[e2]': { ' +=': { on: 'click', call: 'save' } } },
-      // elementOffset 1: the container already has one element before the tree
-      at: { e1: [2, 0], e2: [2, 1] },
-    });
+    expect(html).toContain('<input type="number" checked data-residue="e1">');
+    expect(html).toContain('<button data-residue="e2">Save</button>');
+    expect(html).toContain('<p>Intro</p>');   // nothing pending: no mark
+    expect(residue).toEqual({ e1: { valueAsNumber: 3 }, e2: { ' +=': { on: 'click', call: 'save' } } });
+    // The default style is opt-in, and hides pending parts only when scripts run
+    expect(html.startsWith('<style>')).toBe(false);
+    expect(o2h(config, vm, { style: true }).html.startsWith(RESIDUE_STYLE)).toBe(true);
+    expect(RESIDUE_STYLE).toBe('<style>@media (scripting: enabled) { [data-residue] { visibility: hidden; } }</style>');
   });
 
   test('renders the demo definition, managers included', async () => {
@@ -74,18 +77,18 @@ test.describe('o2h in Node (no DOM)', () => {
     const { html, residue, unrendered } = o2h(config, initialVm(response), { pipes, managers });
     expect(unrendered).toEqual([]);
     // Manager getters rendered on the server; the managers are named for the client
-    expect(html).toContain('<section itemscope="rocket-manager" class="card rocket"><h3>Rocket: Falcon 9</h3>');
+    expect(html).toMatch(/<section itemscope="rocket-manager" class="card rocket" data-residue="e\d+"><h3>Rocket: Falcon 9<\/h3>/);
     expect(html).toContain('<span>549,054 kg</span>');
-    expect(html).toContain('<nav itemscope="links-manager" class="links verifying" aria-label="Launch links">');
+    expect(html).toMatch(/<nav itemscope="links-manager" class="links verifying" aria-label="Launch links" data-residue="e\d+">/);
     expect(html).toContain('<li><a href="https://example.com/webcast/demo-mission-7" target="_blank" rel="noopener">webcast</a></li>');
-    expect(Object.keys(residue.pattern)).toHaveLength(3);
+    expect(Object.keys(residue)).toHaveLength(3);
   });
 });
 
 test.describe('o2h vs builtIns.tree', () => {
   test('the demo definition renders the same DOM as builtIns.tree', async ({ page }) => {
     page.on('pageerror', err => console.error('Browser error:', err));
-    await page.goto('/tests/equivalence.html');
+    await page.goto('tests/equivalence.html');   // relative to baseURL (o2h's folder)
     await page.waitForSelector('#test-complete[data-status]:not([data-status=""])', { timeout: 15000, state: 'attached' });
     const differences = await page.textContent('#differences');
     expect(differences).toBe('');

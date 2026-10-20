@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <title>o2h vs builtIns.tree</title>
-  <script type="importmap">{ "imports": { "assign-gingerly/": "../node_modules/assign-gingerly/" } }</script>
+  <!-- #include virtual="/imports.html" -->
 </head>
 <body>
   <pre id="differences"></pre>
   <div id="test-complete" style="display:none;" data-status=""></div>
   <script type="module">
     import { o2h } from '../o2h.js';
-    import { assignFrom, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
+    import { applyResidue, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
     import { config, pipes, managers, initialVm } from '../demo/treeDefinition.js';
 
     const differences = [];
@@ -18,10 +18,14 @@
     try {
       const vm = initialVm(await (await fetch('../demo/data/launch.json')).json());
 
-      // o2h's HTML, parsed
+      // o2h's HTML, parsed, then finished with its residue
       const { html, residue } = o2h(config, vm, { pipes, managers });
       const server = document.createElement('div');
       server.innerHTML = html;
+      if (!server.querySelector('[data-residue]')) differences.push('o2h marked no pending elements');
+      const itemscopeRegistry = new ItemscopeRegistry(managers);
+      await applyResidue(server, residue, { from: {}, registry: { itemscopeRegistry } });
+      if (server.querySelector('[data-residue]')) differences.push('applyResidue left marks behind');
 
       // builtIns.tree, from the same definition
       const client = document.createElement('div');
@@ -45,13 +49,11 @@
       };
       walk(server, client, '');
 
-      // The residue finishes the server HTML: the managers attach (by their itemscope names)
-      const itemscopeRegistry = new ItemscopeRegistry(managers);
-      assignFrom(server, residue.pattern, { at: residue.at, from: {}, registry: { itemscopeRegistry } });
-      await itemscopeRegistry.whenDefined('rocket-manager');
-      await new Promise(resolve => setTimeout(resolve, 20));
+      // The residue attached the managers, and events inside a manager's element reach that manager
       const rocket = server.querySelector('.rocket');
-      if (rocket.ish?.title !== 'Rocket: Falcon 9') differences.push(`residue: the rocket manager wasn't attached (${rocket.ish?.title})`);
+      if (rocket.ish?.title !== 'Rocket: Falcon 9') differences.push(`the rocket manager wasn't attached (${rocket.ish?.title})`);
+      rocket.querySelector('button').click();
+      if (rocket.ish?.heightLabel !== '71 m') differences.push(`the button didn't reach the rocket manager (${rocket.ish?.heightLabel})`);
     } catch (e) {
       differences.push(`error: ${e.message}`);
     }

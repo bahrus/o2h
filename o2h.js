@@ -6,14 +6,21 @@
  * switch picks, which items a repeat stamps) come from the same functions builtIns.tree uses,
  * so the server renders what Tree would on the client.
  *
- * The client finishes the page with one call:
- *     assignFrom(container, residue.pattern, { at: residue.at, from: host });
+ * Elements that still need something HTML can't carry (properties without an attribute, event
+ * bindings, an itemscope manager's value) are marked data-residue="<name>", and the residue maps
+ * each name to that element's pattern. The client finishes the page, and removes the marks, with
+ * assign-gingerly's applyResidue:
+ *     await applyResidue(container, residue, { from: host });
  */
 import { chooseCase, isSwitch, mapEntries, normalize, repeatItems } from 'assign-gingerly/handlers/treeSpec.js';
 import { attributeText, classifyPatternKey } from 'assign-gingerly/handlers/compileTree.js';
 import { getValue, getValues } from 'assign-gingerly/resolve/getValues.js';
 import { planMicroJoin } from 'assign-gingerly/syncOps/microJoin.js';
 import { assignFrom } from 'assign-gingerly/assignFrom.js';
+/** Marks an element that still needs its residue entry: assign-gingerly's RESIDUE_ATTRIBUTE. */
+export const RESIDUE_ATTRIBUTE = 'data-residue';
+/** The opt-in default style (options.style): pending parts hidden, only when scripts run. */
+export const RESIDUE_STYLE = `<style>@media (scripting: enabled) { [${RESIDUE_ATTRIBUTE}] { visibility: hidden; } }</style>`;
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 /** Properties that have an HTML attribute (the rest go to the residue). `true`: a boolean attribute of the same name, lowercased. */
 const REFLECTED = {
@@ -31,7 +38,7 @@ const escapeAttr = (text) => String(text).replace(/&/g, '&amp;').replace(/"/g, '
  *
  * @param config  `{ map, keepNullish?, aka?, markerName? }`: the same JSON builtIns.tree takes
  * @param from    The data (e.g. an API response)
- * @param options Pipes, aka, sync protocols, server-side managers, and the container's element offset
+ * @param options Pipes, aka, sync protocols, server-side managers, and the opt-in default style
  * @returns `{ html, residue, unrendered }`
  */
 export function o2h(config, from, options = {}) {
@@ -41,20 +48,20 @@ export function o2h(config, from, options = {}) {
         pipes: options.pipes,
         protocols: options.protocols,
         managers: options.managers ?? {},
-        pattern: {},
-        at: {},
+        residue: {},
         count: 0,
         unrendered: [],
     };
-    let html = `<!--?start name="${escapeAttr(markerName)}"-->`;
-    let index = options.elementOffset ?? 0;
+    let html = options.style ? RESIDUE_STYLE : '';
+    html += `<!--?start name="${escapeAttr(markerName)}"-->`;
+    let index = 0;
     for (const { spec, value } of mapEntries(map, from, keepNullish)) {
         const rendered = renderSpec(spec, value, [from], [index], ctx);
         html += rendered.html;
         index += rendered.elements;
     }
     html += '<!--?end-->';
-    return { html, residue: ctx.count > 0 ? { pattern: ctx.pattern, at: ctx.at } : null, unrendered: ctx.unrendered };
+    return { html, residue: ctx.count > 0 ? ctx.residue : null, unrendered: ctx.unrendered };
 }
 function resolveOptions(stack, ctx) {
     return { pipes: ctx.pipes, aka: ctx.aka, protocols: ctx.protocols, fromStack: stack };
@@ -177,11 +184,11 @@ function renderSpec(spec, value, stack, path, ctx) {
         for (const childSpec of children)
             renderChild(childSpec, scope, stack);
     }
-    // What the element couldn't carry as HTML: one residue entry, addressed by its element path
+    // What the element couldn't carry as HTML: one residue entry, named by the element's mark
     if (Object.keys(leftover).length > 0) {
         const name = `e${++ctx.count}`;
-        ctx.at[name] = path;
-        ctx.pattern[`#[${name}]`] = leftover;
+        ctx.residue[name] = leftover;
+        attrs.set(RESIDUE_ATTRIBUTE, name);
     }
     let html = `<${tag}`;
     for (const [name, text] of attrs)

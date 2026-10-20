@@ -4,7 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>o2h demo: a tree config + an API response → HTML</title>
-    <script type="importmap">{ "imports": { "assign-gingerly/": "../node_modules/assign-gingerly/" } }</script>
+    <!-- The import map: o2h's imports.html (published packages) when o2h is served on its own,
+         the workspace's (sibling repos) when the beGingerly folder is served -->
+    <!-- #include virtual="/imports.html" -->
     <style>
         :root {
             --fg: #1d2330;
@@ -168,19 +170,22 @@
         (<a href="./treeDefinition.js">treeDefinition.js</a>, a copy of assign-gingerly's tree-demo definition) against an API response
         (<a href="./data/launch.json">data/launch.json</a>) to an <strong>HTML string</strong>, as a server would.
         This page runs it in the browser to show the result next to what <code>builtIns.tree</code> builds on the client from the same definition.
-        What HTML can't carry (properties, event listeners, manager values) comes back as a <strong>residue</strong>,
-        applied on the client with one <code>assignFrom</code> call.
+        What HTML can't carry (properties, event listeners, manager values) comes back as a <strong>residue</strong>.
+        The elements still waiting for it are marked <code>data-residue</code>, and o2h's opt-in default style
+        (<code>style: true</code>) hides them, but only when scripts run. assign-gingerly's <code>applyResidue</code> finishes them
+        and removes the marks, each as soon as it's ready.
     </p>
 
     <div class="controls">
-        <button id="apply-residue">Apply the residue</button>
+        <button id="apply-residue">Apply the residue (reveals the hidden parts)</button>
         <button id="toggle-units">Toggle units (client)</button>
     </div>
 
     <div class="columns">
         <section>
             <h2>o2h (server-rendered HTML)</h2>
-            <p class="note">The string from <code>o2h()</code>, assigned as innerHTML. Managers ran on the server, so their getters rendered.</p>
+            <p class="note">The string from <code>o2h()</code>, assigned as innerHTML. Managers ran on the server, so their getters rendered.
+                The parts waiting for the residue (the links bar, the rocket card) are hidden until it's applied.</p>
             <article id="server" class="launch"></article>
         </section>
         <section>
@@ -211,7 +216,7 @@
 
     <script type="module">
         import { o2h } from '../o2h.js';
-        import { assignFrom, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
+        import { applyResidue, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
         import { config, pipes, managers, initialVm, setLog } from './treeDefinition.js';
 
         const logEl = document.getElementById('log');
@@ -229,13 +234,13 @@
         const vm = initialVm(response);
 
         // "Server": the config and data in, an HTML string (and a residue) out
-        const { html, residue, unrendered } = o2h(config, vm, { pipes, managers });
+        const { html, residue, unrendered } = o2h(config, vm, { pipes, managers, style: true });
         const server = document.getElementById('server');
         server.innerHTML = html;
         document.getElementById('html').textContent = html;
         document.getElementById('residue').textContent = JSON.stringify(residue, null, 2);
         document.getElementById('unrendered').textContent = JSON.stringify(unrendered, null, 2);
-        log('o2h', `${html.length} characters of HTML, ${Object.keys(residue?.pattern ?? {}).length} residue entries`);
+        log('o2h', `${html.length} characters of HTML; ${server.querySelectorAll('[data-residue]').length} elements pending (hidden)`);
 
         // Client: builtIns.tree, with the same definition (managers registered locally)
         const itemscopeRegistry = new ItemscopeRegistry(managers);
@@ -243,11 +248,13 @@
         await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, { from: vm, pipes, registry: { itemscopeRegistry } });
 
         // Compare the two, before either one changes (the links manager verifies asynchronously).
-        // One difference is intended: o2h names each manager with itemscope="<name>", so the client can
-        // attach it (builtIns.tree attaches managers without the attribute).
+        // Ignored: o2h's style element, the data-residue marks (applyResidue removes them), and
+        // itemscope="<name>" on managed elements, which o2h adds so the client can attach the manager.
         const comparable = article => {
             const copy = article.cloneNode(true);
             copy.removeAttribute('id');
+            copy.querySelector(':scope > style')?.remove();
+            for (const el of copy.querySelectorAll('[data-residue]')) el.removeAttribute('data-residue');
             for (const name of Object.keys(managers)) {
                 for (const el of copy.querySelectorAll(`[itemscope="${name}"]`)) el.removeAttribute('itemscope');
             }
@@ -255,19 +262,20 @@
         };
         const same = comparable(server).isEqualNode(comparable(client));
         const verdict = document.getElementById('verdict');
-        verdict.textContent = same ? 'yes (apart from itemscope="<manager>" on managed elements, which o2h adds for the client)' : 'no (see the console)';
+        verdict.textContent = same ? 'yes (apart from the style element o2h adds, the data-residue marks, and itemscope="<manager>" on managed elements)' : 'no (see the console)';
         verdict.className = `verdict ${same ? 'ok' : 'bad'}`;
         if (!same) console.log({ server: server.innerHTML, client: client.innerHTML });
 
-        // Finishing the server HTML on the client: one assignFrom with the residue
-        document.getElementById('apply-residue').addEventListener('click', () => {
+        // Finishing the server HTML on the client: applyResidue attaches the managers, sets the properties
+        // and binds the events (inside a manager's element, the manager is their host), then unmarks each element
+        document.getElementById('apply-residue').addEventListener('click', async () => {
             if (!residue) return;
-            // The host receives `call`s from event bindings. A manager's own subtree isn't rebound here:
-            // that's builtIns.scope's job (see assign-gingerly's docs/scope.md).
-            const host = { increaseHeightByOne: () => log('host', 'increaseHeightByOne called (bind the card with builtIns.scope to rebind it)') };
-            assignFrom(server, residue.pattern, { at: residue.at, from: host, registry: { itemscopeRegistry } });
-            log('residue', `applied ${Object.keys(residue.pattern).length} entries`);
-        });
+            const serverRegistry = new ItemscopeRegistry(managers);
+            await applyResidue(server, residue, { from: {}, registry: { itemscopeRegistry: serverRegistry } });
+            log('applyResidue', `applied ${Object.keys(residue).length} entries; ${server.querySelectorAll('[data-residue]').length} elements still pending`);
+            // The card's button now calls its RocketManager. Its own text isn't re-bound on the client yet:
+            // that would be builtIns.scope's job (see assign-gingerly's docs/scope.md).
+        }, { once: true });
         document.getElementById('toggle-units').addEventListener('click', () => {
             const rocket = client.querySelector('.rocket');
             rocket.ish.metric = !rocket.ish.metric;
