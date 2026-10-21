@@ -40,6 +40,8 @@ Types: [`types/o2h/types.d.ts`](types/o2h/types.d.ts).
 
 [`demo/index.html`](demo/index.html) renders [`demo/treeDefinition.js`](demo/treeDefinition.js), a copy of assign-gingerly's tree-demo definition, against [`demo/data/launch.json`](demo/data/launch.json). It shows o2h's HTML next to what builtIns.tree builds in the browser from the same definition, checks that the two are the same DOM, and finishes the server HTML with **Hydrate** (builtIns.tree adopts the server's elements; then the rocket card's "Increase by one" re-renders it). With `style: true`, the pending parts (the links bar, the rocket card) stay hidden until then.
 
+[`demo/benchmark/adopt.html`](demo/benchmark/adopt.html) times hydration with `adopt: true` against the experimental `adopt: 'pending'` (bind only what's marked), on the rocket definition, a mostly static company profile ([`companyDefinition.js`](demo/benchmark/companyDefinition.js)), and a directory of 100 profiles. It also checks that both give the same DOM and that the managers stay live.
+
 ## Viewing Locally
 
 1. Install git and node.js.

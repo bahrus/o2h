@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Adopt Benchmark</title>
+    <!-- #include virtual="/imports.html" -->
+    <style>
+        :root { --fg: #1b1f24; --bg: #fff; --muted: #5b6470; --line: #d8dde3; --ok: #1a7f37; --bad: #c62828; }
+        @media (prefers-color-scheme: dark) {
+            :root { --fg: #e6e9ed; --bg: #15181c; --muted: #9aa4b0; --line: #333a42; --ok: #4ac26b; --bad: #ff6b6b; }
+        }
+        body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); margin: 0 auto; padding: 16px; max-width: 1000px; }
+        table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+        th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: right; }
+        th:first-child, td:first-child { text-align: left; }
+        .muted { color: var(--muted); }
+        .ok { color: var(--ok); } .bad { color: var(--bad); }
+        #stage { position: absolute; left: -10000px; width: 900px; }
+    </style>
+</head>
+<body>
+    <h1>Adopt benchmark: <code>adopt: true</code> vs <code>adopt: 'pending'</code></h1>
+    <p class="muted">
+        Each scenario is rendered once by o2h (in the page, as a server would), then hydrated many times from fresh copies of
+        that HTML: builtIns.tree with <code>adopt: true</code> (bind everything) and with <code>adopt: 'pending'</code> (bind only
+        what's marked <code>data-pending</code>, its contents and its ancestors). "Client render" is builtIns.tree building the
+        same DOM from nothing, for scale. Times are medians per hydration; the parse (innerHTML) isn't counted.
+        Query options: <code>?samples=21</code>.
+    </p>
+    <p id="status">Running…</p>
+    <table id="results">
+        <thead><tr><th>Scenario</th><th>Elements</th><th>Bound by 'pending'</th><th>adopt: true</th><th>adopt: 'pending'</th><th>Saved</th><th>Client render</th><th>Checks</th></tr></thead>
+        <tbody></tbody>
+    </table>
+    <div id="stage"></div>
+
+    <script type="module">
+        import { o2h } from '../../o2h.js';
+        import { assignFromAsync, ItemscopeRegistry, whenEventsBound } from 'assign-gingerly/index.js';
+        import { profileConfig, directoryConfig, company, managers as companyManagers } from './companyDefinition.js';
+        import { config as rocketConfig, pipes as rocketPipes, managers as rocketManagers, initialVm } from '../treeDefinition.js';
+
+        const params = new URLSearchParams(location.search);
+        const samples = Number(params.get('samples')) || 21;
+        const stage = document.getElementById('stage');
+        const median = xs => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+        const ms = x => x < 1 ? `${(x * 1000).toFixed(0)} µs` : `${x.toFixed(2)} ms`;
+
+        const launch = await (await fetch('../data/launch.json')).json();
+        const scenarios = [
+            { name: 'Rocket (tree-demo definition)', config: rocketConfig, vm: initialVm(launch), pipes: rocketPipes, managers: rocketManagers, batch: 20 },
+            { name: 'Company profile', config: profileConfig, vm: { company: company(1) }, managers: companyManagers, batch: 20 },
+            { name: 'Company directory (100 profiles)', config: directoryConfig, vm: { companies: Array.from({ length: 100 }, (_, i) => company(i)) }, managers: companyManagers, batch: 1 },
+        ];
+
+        /** Fresh copies of the server HTML, hydrated (or client-rendered) one after another; returns ms per copy. */
+        async function time(scenario, mode, copies) {
+            const { config, vm, pipes, managers } = scenario;
+            const hosts = Array.from({ length: copies }, () => {
+                const host = document.createElement('div');
+                if (mode !== 'client') host.innerHTML = scenario.html;
+                stage.append(host);
+                return host;
+            });
+            const registry = { itemscopeRegistry: new ItemscopeRegistry(managers) };
+            const treeConfig = mode === 'client' ? { do: 'builtIns.tree', ...config } : { do: 'builtIns.tree', adopt: mode, ...config };
+            const t0 = performance.now();
+            for (const host of hosts) await assignFromAsync(host, { '?. =>': treeConfig }, { from: vm, pipes, registry });
+            const elapsed = (performance.now() - t0) / copies;
+            const last = hosts.at(-1);
+            for (const host of hosts.slice(0, -1)) host.remove();
+            return { elapsed, host: last };
+        }
+
+        /** The 'pending' run binds the marked elements, their contents and their ancestors: count them in the server HTML. */
+        function boundCount(html) {
+            const host = document.createElement('div');
+            host.innerHTML = html;
+            const bound = new Set();
+            for (const el of host.querySelectorAll('[data-pending]')) {
+                for (const inner of [el, ...el.querySelectorAll('*')]) bound.add(inner);
+                for (let at = el.parentElement; at && at !== host; at = at.parentElement) bound.add(at);
+            }
+            return { total: host.querySelectorAll('*').length, bound: bound.size };
+        }
+
+        const tbody = document.querySelector('#results tbody');
+        const results = [];
+        for (const scenario of scenarios) {
+            const { html } = o2h(scenario.config, scenario.vm, { pipes: scenario.pipes, managers: scenario.managers });
+            scenario.html = html;
+            const { total, bound } = boundCount(html);
+
+            // Warm up (module loading, JIT), then alternate the modes per sample
+            for (const mode of [true, 'pending', 'client']) (await time(scenario, mode, 2)).host.remove();
+            const times = { true: [], pending: [], client: [] };
+            const checks = [];
+            for (let s = 0; s < samples; s++) {
+                for (const mode of s % 2 ? ['pending', true, 'client'] : [true, 'pending', 'client']) {
+                    const { elapsed, host } = await time(scenario, mode, scenario.batch);
+                    times[mode].push(elapsed);
+                    if (s === 0) checks.push([mode, host]); else host.remove();
+                }
+            }
+
+            // Checks: 'pending' gives the same DOM as true, with no marks left, and it's live
+            const [[, full], [, partial]] = [true, 'pending'].map(m => checks.find(([mode]) => mode === m));
+            const problems = [];
+            if (!partial.isEqualNode(full)) problems.push('pending ≠ true');
+            if (partial.querySelector('[data-pending]')) problems.push('marks left');
+            for (const [label, host] of [['true', full], ['pending', partial]]) {
+                const button = host.querySelector('[itemscope] button');
+                if (!button) continue;
+                await whenEventsBound(button);
+                const scope = button.closest('[itemscope]');
+                const before = scope.textContent;
+                button.click();
+                if (scope.textContent === before) problems.push(`${label}: the button didn't re-render its manager`);
+            }
+            for (const [, host] of checks) host.remove();
+
+            const row = {
+                scenario: scenario.name, elements: total, bound,
+                adoptTrue: median(times.true), adoptPending: median(times.pending), client: median(times.client),
+                problems,
+            };
+            results.push(row);
+            const saved = 1 - row.adoptPending / row.adoptTrue;
+            const tr = document.createElement('tr');
+            for (const [text, cls] of [
+                [row.scenario], [String(total)], [`${bound} (${Math.round(100 * bound / total)}%)`],
+                [ms(row.adoptTrue)], [ms(row.adoptPending)], [`${Math.round(100 * saved)}%`], [ms(row.client)],
+                [problems.length ? problems.join('; ') : 'ok', problems.length ? 'bad' : 'ok'],
+            ]) {
+                const td = document.createElement('td');
+                td.textContent = text;
+                if (cls) td.className = cls;
+                tr.append(td);
+            }
+            tbody.append(tr);
+        }
+        document.getElementById('status').textContent = `Done: ${samples} samples per mode, ${navigator.userAgent.match(/(Firefox|Chrome|Safari)\/[\d.]+/)?.[0] ?? ''}.`;
+        window.benchmarkResults = results;
+    </script>
+</body>
+</html>
