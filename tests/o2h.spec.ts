@@ -31,7 +31,7 @@ test.describe('o2h in Node (no DOM)', () => {
       success: true,
       nothing: null,
     };
-    const { html, residue, unrendered } = o2h(config, vm);
+    const { html, unrendered } = o2h(config, vm);
     expect(html).toBe(
       '<!--?start name="tree"-->'
       // in attributes, & and " are escaped (< and > needn't be); in text, &, < and >
@@ -42,13 +42,12 @@ test.describe('o2h in Node (no DOM)', () => {
       + '<span>Success</span>'
       + '<!--?end-->'
     );
-    expect(residue).toBeNull();
     expect(unrendered).toEqual([]);
     expect(o2h(config, { ...vm, crew: [] }).html).toContain('<ul><li>None</li></ul>');
   });
 
-  test('hands what HTML can\'t carry to the residue, marking each element data-residue', async () => {
-    const { o2h, RESIDUE_STYLE } = await import(url('o2h.js'));
+  test('marks each element that lost something HTML can\'t carry data-pending', async () => {
+    const { o2h, PENDING_STYLE } = await import(url('o2h.js'));
     const { tree } = await import(url('node_modules/assign-gingerly/DX/tree.js'));
     const config = {
       map: {
@@ -57,16 +56,16 @@ test.describe('o2h in Node (no DOM)', () => {
       },
     };
     const vm = { intro: 1, form: { qty: 3, agree: true } };
-    const { html, residue } = o2h(config, vm);
-    // checked has an attribute (its default); valueAsNumber doesn't, so it goes to the residue
-    expect(html).toContain('<input type="number" checked data-residue="e1">');
-    expect(html).toContain('<button data-residue="e2">Save</button>');
+    const { html } = o2h(config, vm);
+    // checked has an attribute (its default); valueAsNumber doesn't, so the client sets it
+    expect(html).toContain('<input type="number" checked data-pending>');
+    expect(html).toContain('<button data-pending>Save</button>');   // the event binding
     expect(html).toContain('<p>Intro</p>');   // nothing pending: no mark
-    expect(residue).toEqual({ e1: { valueAsNumber: 3 }, e2: { ' +=': { on: 'click', call: 'save' } } });
+    expect(html).toContain('<form>');
     // The default style is opt-in, and hides pending parts only when scripts run
     expect(html.startsWith('<style>')).toBe(false);
-    expect(o2h(config, vm, { style: true }).html.startsWith(RESIDUE_STYLE)).toBe(true);
-    expect(RESIDUE_STYLE).toBe('<style>@media (scripting: enabled) { [data-residue] { visibility: hidden; } }</style>');
+    expect(o2h(config, vm, { style: true }).html.startsWith(PENDING_STYLE)).toBe(true);
+    expect(PENDING_STYLE).toBe('<style>@media (scripting: enabled) { [data-pending] { visibility: hidden; } }</style>');
   });
 
   test('renders the demo definition, managers included', async () => {
@@ -74,14 +73,14 @@ test.describe('o2h in Node (no DOM)', () => {
     const { config, pipes, managers, initialVm } = await import(url('demo/treeDefinition.js'));
     const fs = await import('node:fs');
     const response = JSON.parse(fs.readFileSync(new URL('../demo/data/launch.json', import.meta.url), 'utf8'));
-    const { html, residue, unrendered } = o2h(config, initialVm(response), { pipes, managers });
+    const { html, unrendered } = o2h(config, initialVm(response), { pipes, managers });
     expect(unrendered).toEqual([]);
     // Manager getters rendered on the server; the managers are named for the client
-    expect(html).toMatch(/<section itemscope="rocket-manager" class="card rocket" data-residue="e\d+"><h3>Rocket: Falcon 9<\/h3>/);
+    expect(html).toMatch(/<section itemscope="rocket-manager" class="card rocket" data-pending><h3>Rocket: Falcon 9<\/h3>/);
     expect(html).toContain('<span>549,054 kg</span>');
-    expect(html).toMatch(/<nav itemscope="links-manager" class="links verifying" aria-label="Launch links" data-residue="e\d+">/);
+    expect(html).toMatch(/<nav itemscope="links-manager" class="links verifying" aria-label="Launch links" data-pending>/);
     expect(html).toContain('<li><a href="https://example.com/webcast/demo-mission-7" target="_blank" rel="noopener">webcast</a></li>');
-    expect(Object.keys(residue)).toHaveLength(3);
+    expect(html.match(/ data-pending\b/g)).toHaveLength(3);
   });
 });
 

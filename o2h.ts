@@ -1,16 +1,15 @@
 /**
- * o2h: a builtIns.tree config + data → HTML, plus a "residue" for what HTML can't carry.
+ * o2h: a builtIns.tree config + data → HTML.
  *
  * Uses only assign-gingerly's pure (DOM-free) exports, so it runs in Node, Deno, Bun, a
  * Cloudflare Worker or a service worker. Structural decisions (which keys render, which case a
  * switch picks, which items a repeat stamps) come from the same functions builtIns.tree uses,
  * so the server renders what Tree would on the client.
  *
- * Elements that still need something HTML can't carry (properties without an attribute, event
- * bindings, an itemscope manager's value) are marked data-residue="<name>", and the residue maps
- * each name to that element's pattern. The client finishes the page, and removes the marks, with
- * assign-gingerly's applyResidue:
- *     await applyResidue(container, residue, { from: host });
+ * Elements that lost something HTML can't carry (properties without an attribute, event
+ * bindings, an itemscope manager) are marked data-pending: "hide this until the client restores
+ * it". The client restores them by hydrating, with builtIns.tree's `adopt: true` and the same
+ * config and data, which removes the marks.
  */
 
 import { chooseCase, isSwitch, mapEntries, normalize, repeatItems } from 'assign-gingerly/handlers/treeSpec.js';
@@ -21,17 +20,17 @@ import { assignFrom } from 'assign-gingerly/assignFrom.js';
 import type { ElementSpecification } from 'assign-gingerly/types/treeTypes.js';
 import type { O2HConfig, O2HManager, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
 
-export type { O2HConfig, O2HManager, O2HOptions, O2HResidue, O2HResult, O2HUnrendered } from './types/o2h/types.js';
+export type { O2HConfig, O2HManager, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
 
-/** Marks an element that still needs its residue entry: assign-gingerly's RESIDUE_ATTRIBUTE. */
-export const RESIDUE_ATTRIBUTE = 'data-residue' as const;
+/** Marks an element that lost something HTML can't carry: assign-gingerly's PENDING_ATTRIBUTE. */
+export const PENDING_ATTRIBUTE = 'data-pending' as const;
 
 /** The opt-in default style (options.style): pending parts hidden, only when scripts run. */
-export const RESIDUE_STYLE = `<style>@media (scripting: enabled) { [${RESIDUE_ATTRIBUTE}] { visibility: hidden; } }</style>`;
+export const PENDING_STYLE = `<style>@media (scripting: enabled) { [${PENDING_ATTRIBUTE}] { visibility: hidden; } }</style>`;
 
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 
-/** Properties that have an HTML attribute (the rest go to the residue). `true`: a boolean attribute of the same name, lowercased. */
+/** Properties that have an HTML attribute (the rest mark the element pending). `true`: a boolean attribute of the same name, lowercased. */
 const REFLECTED: Record<string, string | true> = {
     className: 'class', id: 'id', title: 'title', lang: 'lang', dir: 'dir', slot: 'slot', role: 'role',
     href: 'href', src: 'src', alt: 'alt', name: 'name', type: 'type', placeholder: 'placeholder',
@@ -50,8 +49,6 @@ interface Context {
     pipes?: O2HOptions['pipes'];
     protocols?: O2HOptions['protocols'];
     managers: Record<string, O2HManager>;
-    residue: Record<string, Record<string, any>>;
-    count: number;
     unrendered: O2HUnrendered[];
 }
 
@@ -70,7 +67,7 @@ type ResolveOptions = { pipes?: O2HOptions['pipes']; aka: Record<string, string>
  * @param config  `{ map, keepNullish?, aka?, markerName? }`: the same JSON builtIns.tree takes
  * @param from    The data (e.g. an API response)
  * @param options Pipes, aka, sync protocols, server-side managers, and the opt-in default style
- * @returns `{ html, residue, unrendered }`
+ * @returns `{ html, unrendered }`
  */
 export function o2h(config: O2HConfig, from: any, options: O2HOptions = {}): O2HResult {
     const { map, keepNullish = false, aka: treeAka, markerName = 'tree' } = config;
@@ -79,11 +76,9 @@ export function o2h(config: O2HConfig, from: any, options: O2HOptions = {}): O2H
         pipes: options.pipes,
         protocols: options.protocols,
         managers: options.managers ?? {},
-        residue: {},
-        count: 0,
         unrendered: [],
     };
-    let html = options.style ? RESIDUE_STYLE : '';
+    let html = options.style ? PENDING_STYLE : '';
     html += `<!--?start name="${escapeAttr(markerName)}"-->`;
     let index = 0;
     for (const { spec, value } of mapEntries(map, from, keepNullish)) {
@@ -92,7 +87,7 @@ export function o2h(config: O2HConfig, from: any, options: O2HOptions = {}): O2H
         index += rendered.elements;
     }
     html += '<!--?end-->';
-    return { html, residue: ctx.count > 0 ? ctx.residue : null, unrendered: ctx.unrendered };
+    return { html, unrendered: ctx.unrendered };
 }
 
 function resolveOptions(stack: any[], ctx: Context): ResolveOptions {
@@ -110,10 +105,10 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
     }
     const [, tag, ish, pattern = {}, children, repeat, nested] = normalize(spec);
     const attrs = new Map<string, string>();
-    const leftover: Record<string, any> = {};
+    let pending = false;   // something HTML can't carry: the client restores it
     let content: string | undefined;   // the element's own text / microJoin, as HTML
 
-    // A manager: itemscope names it, so the client attaches it; the residue gives it its value.
+    // A manager: itemscope names it, so the client attaches it.
     // On the server, it renders the subtree from its getters if its class is provided.
     let scope = value;
     if (ish !== undefined) {
@@ -121,7 +116,7 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
             ctx.unrendered.push({ path, key: 'ish (a class can\'t be named in HTML: register it by name)' });
         } else {
             attrs.set('itemscope', ish);
-            leftover.ish = value;
+            pending = true;
             const Manager = ctx.managers[ish];
             if (Manager) scope = constructManager(Manager, value, path, ctx);
         }
@@ -139,7 +134,7 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
         } else if (typeof reflected === 'string') {
             if (propValue == null) attrs.delete(reflected); else attrs.set(reflected, String(propValue));
         } else {
-            leftover[name] = propValue;   // no HTML for it: the client sets it
+            pending = true;   // no HTML for it: the client sets it
         }
     };
 
@@ -167,10 +162,10 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
                 }
                 break;
             case 'event':
-                leftover[key] = raw;   // declarative: resolved when the event fires
+                pending = true;   // the client binds it
                 break;
             case 'ish':
-                leftover.ish = resolveRHS(raw, scope, options);
+                pending = true;
                 break;
             default:
                 evaluateOther(key, raw, scope, options, setProperty, path, ctx);
@@ -203,12 +198,7 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
         for (const childSpec of children) renderChild(childSpec, scope, stack);
     }
 
-    // What the element couldn't carry as HTML: one residue entry, named by the element's mark
-    if (Object.keys(leftover).length > 0) {
-        const name = `e${++ctx.count}`;
-        ctx.residue[name] = leftover;
-        attrs.set(RESIDUE_ATTRIBUTE, name);
-    }
+    if (pending) attrs.set(PENDING_ATTRIBUTE, '');
 
     let html = `<${tag}`;
     for (const [name, text] of attrs) html += text === '' ? ` ${name}` : ` ${name}="${escapeAttr(text)}"`;

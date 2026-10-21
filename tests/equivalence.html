@@ -10,7 +10,7 @@
   <div id="test-complete" style="display:none;" data-status=""></div>
   <script type="module">
     import { o2h } from '../o2h.js';
-    import { applyResidue, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
+    import { assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
     import { config, pipes, managers, initialVm } from '../demo/treeDefinition.js';
 
     const differences = [];
@@ -18,14 +18,11 @@
     try {
       const vm = initialVm(await (await fetch('../demo/data/launch.json')).json());
 
-      // o2h's HTML, parsed, then finished with its residue
-      const { html, residue } = o2h(config, vm, { pipes, managers });
+      // o2h's HTML, parsed (not finished: hydration.html covers that)
+      const { html } = o2h(config, vm, { pipes, managers });
       const server = document.createElement('div');
       server.innerHTML = html;
-      if (!server.querySelector('[data-residue]')) differences.push('o2h marked no pending elements');
-      const itemscopeRegistry = new ItemscopeRegistry(managers);
-      await applyResidue(server, residue, { from: {}, registry: { itemscopeRegistry } });
-      if (server.querySelector('[data-residue]')) differences.push('applyResidue left marks behind');
+      if (!server.querySelector('[data-pending]')) differences.push('o2h marked no pending elements');
 
       // builtIns.tree, from the same definition
       const client = document.createElement('div');
@@ -33,9 +30,9 @@
         from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
       });
 
-      // Node by node; the one intended difference is itemscope="<manager>", which o2h adds for the client
+      // Node by node; the intended differences are the data-pending marks and itemscope="<manager>", which o2h adds for the client
       const attrs = el => [...el.attributes]
-        .filter(a => !(a.name === 'itemscope' && a.value in managers))
+        .filter(a => a.name !== 'data-pending' && !(a.name === 'itemscope' && a.value in managers))
         .map(a => `${a.name}=${a.value}`).sort().join(' ');
       const walk = (a, b, path) => {
         if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) return differences.push(`${path}: ${a.nodeName} vs ${b.nodeName}`);
@@ -48,12 +45,6 @@
         a.childNodes.forEach((child, i) => walk(child, b.childNodes[i], `${path}/${i}`));
       };
       walk(server, client, '');
-
-      // The residue attached the managers, and events inside a manager's element reach that manager
-      const rocket = server.querySelector('.rocket');
-      if (rocket.ish?.title !== 'Rocket: Falcon 9') differences.push(`the rocket manager wasn't attached (${rocket.ish?.title})`);
-      rocket.querySelector('button').click();
-      if (rocket.ish?.heightLabel !== '71 m') differences.push(`the button didn't reach the rocket manager (${rocket.ish?.heightLabel})`);
     } catch (e) {
       differences.push(`error: ${e.message}`);
     }

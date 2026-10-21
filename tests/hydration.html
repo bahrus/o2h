@@ -30,7 +30,7 @@
       });
       const after = [...server.querySelectorAll('*')];
       if (before.length !== after.length || before.some((el, i) => el !== after[i])) differences.push('adopt: elements were rebuilt instead of adopted');
-      if (server.querySelector('[data-residue]')) differences.push('adopt: data-residue marks left behind');
+      if (server.querySelector('[data-pending]')) differences.push('adopt: data-pending marks left behind');
 
       // Same DOM as builtIns.tree builds on its own (apart from itemscope="<manager>", which o2h adds)
       const client = document.createElement('div');

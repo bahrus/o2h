@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 /**
  * Unit tests run o2h in Node (no DOM), as on a server. The equivalence test runs builtIns.tree
- * in each browser and checks that o2h's HTML, finished with its residue, matches what it builds.
+ * in each browser and checks that o2h's HTML matches what it builds, and that it adopts o2h's HTML.
  *
  * Inside the beGingerly workspace (a parent folder with spa-ssi installed), the browser tests are
  * served from the workspace, so /imports.html maps assign-gingerly to the sibling repo: no

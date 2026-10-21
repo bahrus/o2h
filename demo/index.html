@@ -170,16 +170,13 @@
         (<a href="./treeDefinition.js">treeDefinition.js</a>, a copy of assign-gingerly's tree-demo definition) against an API response
         (<a href="./data/launch.json">data/launch.json</a>) to an <strong>HTML string</strong>, as a server would.
         This page runs it in the browser to show the result next to what <code>builtIns.tree</code> builds on the client from the same definition.
-        What HTML can't carry (properties, event listeners, manager values) comes back as a <strong>residue</strong>.
-        The elements still waiting for it are marked <code>data-residue</code>, and o2h's opt-in default style
-        (<code>style: true</code>) hides them, but only when scripts run. assign-gingerly's <code>applyResidue</code> finishes them
-        and removes the marks, each as soon as it's ready.
-        Or <strong>hydrate</strong> instead: <code>builtIns.tree</code> with <code>adopt: true</code> and the same config and data
-        takes the server's elements over, and everything is live: try "Increase by one" on the left card after each.
+        Elements that lost something HTML can't carry (properties, event listeners, managers) are marked <code>data-pending</code>,
+        and o2h's opt-in default style (<code>style: true</code>) hides them, but only when scripts run.
+        <strong>Hydrating</strong> restores them: <code>builtIns.tree</code> with <code>adopt: true</code> and the same config and data
+        takes the server's elements over and removes the marks, and everything is live: try "Increase by one" on the left card afterwards.
     </p>
 
     <div class="controls">
-        <button id="apply-residue">Apply the residue (reveals the hidden parts)</button>
         <button id="hydrate">Hydrate (builtIns.tree adopts the server's elements)</button>
         <button id="toggle-units">Toggle units (client)</button>
     </div>
@@ -188,7 +185,7 @@
         <section>
             <h2>o2h (server-rendered HTML)</h2>
             <p class="note">The string from <code>o2h()</code>, assigned as innerHTML. Managers ran on the server, so their getters rendered.
-                The parts waiting for the residue (the links bar, the rocket card) are hidden until it's applied.</p>
+                The pending parts (the links bar, the rocket card) are hidden until it's hydrated.</p>
             <article id="server" class="launch"></article>
         </section>
         <section>
@@ -206,8 +203,6 @@
             <ol id="log"></ol>
         </section>
         <section>
-            <h2>Residue</h2>
-            <pre id="residue"></pre>
             <h2>Unrendered</h2>
             <pre id="unrendered"></pre>
         </section>
@@ -219,7 +214,7 @@
 
     <script type="module">
         import { o2h } from '../o2h.js';
-        import { applyResidue, assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
+        import { assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
         import { config, pipes, managers, initialVm, setLog } from './treeDefinition.js';
 
         const logEl = document.getElementById('log');
@@ -236,14 +231,13 @@
         const response = await (await fetch('./data/launch.json')).json();
         const vm = initialVm(response);
 
-        // "Server": the config and data in, an HTML string (and a residue) out
-        const { html, residue, unrendered } = o2h(config, vm, { pipes, managers, style: true });
+        // "Server": the config and data in, an HTML string out
+        const { html, unrendered } = o2h(config, vm, { pipes, managers, style: true });
         const server = document.getElementById('server');
         server.innerHTML = html;
         document.getElementById('html').textContent = html;
-        document.getElementById('residue').textContent = JSON.stringify(residue, null, 2);
         document.getElementById('unrendered').textContent = JSON.stringify(unrendered, null, 2);
-        log('o2h', `${html.length} characters of HTML; ${server.querySelectorAll('[data-residue]').length} elements pending (hidden)`);
+        log('o2h', `${html.length} characters of HTML; ${server.querySelectorAll('[data-pending]').length} elements pending (hidden)`);
 
         // Client: builtIns.tree, with the same definition (managers registered locally)
         const itemscopeRegistry = new ItemscopeRegistry(managers);
@@ -251,13 +245,13 @@
         await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, { from: vm, pipes, registry: { itemscopeRegistry } });
 
         // Compare the two, before either one changes (the links manager verifies asynchronously).
-        // Ignored: o2h's style element, the data-residue marks (applyResidue removes them), and
+        // Ignored: o2h's style element, the data-pending marks (hydration removes them), and
         // itemscope="<name>" on managed elements, which o2h adds so the client can attach the manager.
         const comparable = article => {
             const copy = article.cloneNode(true);
             copy.removeAttribute('id');
             copy.querySelector(':scope > style')?.remove();
-            for (const el of copy.querySelectorAll('[data-residue]')) el.removeAttribute('data-residue');
+            for (const el of copy.querySelectorAll('[data-pending]')) el.removeAttribute('data-pending');
             for (const name of Object.keys(managers)) {
                 for (const el of copy.querySelectorAll(`[itemscope="${name}"]`)) el.removeAttribute('itemscope');
             }
@@ -265,36 +259,20 @@
         };
         const same = comparable(server).isEqualNode(comparable(client));
         const verdict = document.getElementById('verdict');
-        verdict.textContent = same ? 'yes (apart from the style element o2h adds, the data-residue marks, and itemscope="<manager>" on managed elements)' : 'no (see the console)';
+        verdict.textContent = same ? 'yes (apart from the style element o2h adds, the data-pending marks, and itemscope="<manager>" on managed elements)' : 'no (see the console)';
         verdict.className = `verdict ${same ? 'ok' : 'bad'}`;
         if (!same) console.log({ server: server.innerHTML, client: client.innerHTML });
 
-        // Two ways to finish the server HTML on the client (one or the other):
-        const applyButton = document.getElementById('apply-residue');
+        // Hydration: builtIns.tree, with the same config and data, adopts the server's elements (adopt: true)
+        // instead of rebuilding them, and removes the data-pending marks. Everything is live: "Increase by one" re-renders the card.
         const hydrateButton = document.getElementById('hydrate');
-        const finished = how => {
-            applyButton.disabled = hydrateButton.disabled = true;
-            log(how, `${server.querySelectorAll('[data-residue]').length} elements still pending`);
-        };
-
-        // 1. The residue: applyResidue attaches the managers, sets the properties and binds the events (inside a
-        //    manager's element, the manager is their host), then unmarks each element. No data needed on the client,
-        //    but nothing re-renders the markup: "Increase by one" changes the manager's state, not the card.
-        applyButton.addEventListener('click', async () => {
-            if (!residue) return;
-            await applyResidue(server, residue, { from: {}, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) } });
-            finished('applyResidue');
-        });
-
-        // 2. Hydration: builtIns.tree, with the same config and data, adopts the server's elements (adopt: true)
-        //    instead of rebuilding them. Everything is live: "Increase by one" re-renders the card.
         hydrateButton.addEventListener('click', async () => {
             const before = [...server.querySelectorAll('*')];
             await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } },
                 { from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) } });
             const reused = [...server.querySelectorAll('*')].filter((el, i) => el === before[i]).length;
-            finished('builtIns.tree adopt');
-            log('builtIns.tree adopt', `${reused} of ${before.length} elements adopted (not rebuilt)`);
+            hydrateButton.disabled = true;
+            log('builtIns.tree adopt', `${reused} of ${before.length} elements adopted (not rebuilt); ${server.querySelectorAll('[data-pending]').length} still pending`);
         });
         document.getElementById('toggle-units').addEventListener('click', () => {
             const rocket = client.querySelector('.rocket');
