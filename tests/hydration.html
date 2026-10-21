@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>o2h + builtIns.tree adopt (hydration)</title>
+  <!-- #include virtual="/imports.html" -->
+</head>
+<body>
+  <pre id="differences"></pre>
+  <div id="test-complete" style="display:none;" data-status=""></div>
+  <script type="module">
+    import { o2h } from '../o2h.js';
+    import { assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
+    import { config, pipes, managers, initialVm } from '../demo/treeDefinition.js';
+
+    const differences = [];
+    const complete = document.getElementById('test-complete');
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    try {
+      const vm = initialVm(await (await fetch('../demo/data/launch.json')).json());
+
+      // The server's HTML, hydrated: builtIns.tree adopts it instead of rebuilding
+      const { html } = o2h(config, vm, { pipes, managers });
+      const server = document.createElement('div');
+      server.innerHTML = html;
+      document.body.append(server);
+      const before = [...server.querySelectorAll('*')];
+      await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, {
+        from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
+      });
+      const after = [...server.querySelectorAll('*')];
+      if (before.length !== after.length || before.some((el, i) => el !== after[i])) differences.push('adopt: elements were rebuilt instead of adopted');
+      if (server.querySelector('[data-residue]')) differences.push('adopt: data-residue marks left behind');
+
+      // Same DOM as builtIns.tree builds on its own (apart from itemscope="<manager>", which o2h adds)
+      const client = document.createElement('div');
+      await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, {
+        from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
+      });
+      const strip = host => {
+        const copy = host.cloneNode(true);
+        for (const name of Object.keys(managers)) for (const el of copy.querySelectorAll(`[itemscope="${name}"]`)) el.removeAttribute('itemscope');
+        return copy;
+      };
+      if (!strip(server).isEqualNode(strip(client))) differences.push('adopt: the hydrated DOM differs from builtIns.tree\'s');
+
+      // Live: the rocket card's button calls its manager, whose ctx.rebind() re-renders the adopted card
+      await delay(30);   // event listeners attach once their module has loaded
+      const rocket = server.querySelector('.rocket');
+      const height = () => rocket.querySelectorAll('.spec')[0].lastElementChild.textContent;
+      if (height() !== '70 m') differences.push(`before the click: ${height()}`);
+      rocket.querySelector('button').click();
+      if (height() !== '71 m') differences.push(`the card didn't update after "Increase by one" (${height()})`);
+      rocket.ish.metric = false;
+      if (!height().endsWith(' ft')) differences.push(`the card didn't update after metric = false (${height()})`);
+    } catch (e) {
+      differences.push(`error: ${e.message}`);
+    }
+    document.getElementById('differences').textContent = differences.join('\n');
+    complete.dataset.status = differences.length === 0 ? 'success' : 'failure';
+  </script>
+</body>
+</html>

@@ -85,6 +85,16 @@ test.describe('o2h in Node (no DOM)', () => {
   });
 });
 
+test.describe('o2h + builtIns.tree adopt (hydration)', () => {
+  test('builtIns.tree adopts o2h\'s markup: same elements, same DOM, live managers', async ({ page }) => {
+    page.on('pageerror', err => console.error('Browser error:', err));
+    await page.goto('tests/hydration.html');   // relative to baseURL (o2h's folder)
+    await page.waitForSelector('#test-complete[data-status]:not([data-status=""])', { timeout: 15000, state: 'attached' });
+    expect(await page.textContent('#differences')).toBe('');
+    expect(await page.getAttribute('#test-complete', 'data-status')).toBe('success');
+  });
+});
+
 test.describe('o2h vs builtIns.tree', () => {
   test('the demo definition renders the same DOM as builtIns.tree', async ({ page }) => {
     page.on('pageerror', err => console.error('Browser error:', err));

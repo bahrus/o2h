@@ -174,10 +174,13 @@
         The elements still waiting for it are marked <code>data-residue</code>, and o2h's opt-in default style
         (<code>style: true</code>) hides them, but only when scripts run. assign-gingerly's <code>applyResidue</code> finishes them
         and removes the marks, each as soon as it's ready.
+        Or <strong>hydrate</strong> instead: <code>builtIns.tree</code> with <code>adopt: true</code> and the same config and data
+        takes the server's elements over, and everything is live: try "Increase by one" on the left card after each.
     </p>
 
     <div class="controls">
         <button id="apply-residue">Apply the residue (reveals the hidden parts)</button>
+        <button id="hydrate">Hydrate (builtIns.tree adopts the server's elements)</button>
         <button id="toggle-units">Toggle units (client)</button>
     </div>
 
@@ -266,16 +269,33 @@
         verdict.className = `verdict ${same ? 'ok' : 'bad'}`;
         if (!same) console.log({ server: server.innerHTML, client: client.innerHTML });
 
-        // Finishing the server HTML on the client: applyResidue attaches the managers, sets the properties
-        // and binds the events (inside a manager's element, the manager is their host), then unmarks each element
-        document.getElementById('apply-residue').addEventListener('click', async () => {
+        // Two ways to finish the server HTML on the client (one or the other):
+        const applyButton = document.getElementById('apply-residue');
+        const hydrateButton = document.getElementById('hydrate');
+        const finished = how => {
+            applyButton.disabled = hydrateButton.disabled = true;
+            log(how, `${server.querySelectorAll('[data-residue]').length} elements still pending`);
+        };
+
+        // 1. The residue: applyResidue attaches the managers, sets the properties and binds the events (inside a
+        //    manager's element, the manager is their host), then unmarks each element. No data needed on the client,
+        //    but nothing re-renders the markup: "Increase by one" changes the manager's state, not the card.
+        applyButton.addEventListener('click', async () => {
             if (!residue) return;
-            const serverRegistry = new ItemscopeRegistry(managers);
-            await applyResidue(server, residue, { from: {}, registry: { itemscopeRegistry: serverRegistry } });
-            log('applyResidue', `applied ${Object.keys(residue).length} entries; ${server.querySelectorAll('[data-residue]').length} elements still pending`);
-            // The card's button now calls its RocketManager. Its own text isn't re-bound on the client yet:
-            // that would be builtIns.scope's job (see assign-gingerly's docs/scope.md).
-        }, { once: true });
+            await applyResidue(server, residue, { from: {}, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) } });
+            finished('applyResidue');
+        });
+
+        // 2. Hydration: builtIns.tree, with the same config and data, adopts the server's elements (adopt: true)
+        //    instead of rebuilding them. Everything is live: "Increase by one" re-renders the card.
+        hydrateButton.addEventListener('click', async () => {
+            const before = [...server.querySelectorAll('*')];
+            await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } },
+                { from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) } });
+            const reused = [...server.querySelectorAll('*')].filter((el, i) => el === before[i]).length;
+            finished('builtIns.tree adopt');
+            log('builtIns.tree adopt', `${reused} of ${before.length} elements adopted (not rebuilt)`);
+        });
         document.getElementById('toggle-units').addEventListener('click', () => {
             const rocket = client.querySelector('.rocket');
             rocket.ish.metric = !rocket.ish.metric;

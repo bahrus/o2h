@@ -20,6 +20,15 @@ const { html, residue, unrendered } = o2h(config, apiResponse, { pipes, managers
 
 - **`unrendered`** lists keys o2h could neither render nor hand over, rather than guessing.
 
+## Finishing on the client: residue or hydration
+
+| | How | Needs on the client | Afterwards |
+|---|---|---|---|
+| **Residue** | `applyResidue(container, residue, …)` | The residue only | Static: managers and events work, but nothing re-renders the markup |
+| **Hydration** | builtIns.tree with `adopt: true`, the same config and the same data: `assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, { from: data, … })` | The config and the data (e.g. embedded as JSON) | Live: Tree adopts the server's elements (no rebuild) and rebinds them in place, with managers re-rendering on `ctx.rebind()` |
+
+Hydration also removes the `data-residue` marks, so a page uses one or the other. If the markup doesn't match the config, Tree rebuilds it instead.
+
 ## Options
 
 | Option | |
@@ -34,7 +43,7 @@ Types: [`types/o2h/types.d.ts`](types/o2h/types.d.ts).
 
 ## Demo
 
-[`demo/index.html`](demo/index.html) renders [`demo/treeDefinition.js`](demo/treeDefinition.js), a copy of assign-gingerly's tree-demo definition, against [`demo/data/launch.json`](demo/data/launch.json). It shows o2h's HTML next to what builtIns.tree builds in the browser from the same definition, checks that the two are the same DOM, and applies the residue. With `style: true`, the pending parts (the links bar, the rocket card) stay hidden until the residue is applied.
+[`demo/index.html`](demo/index.html) renders [`demo/treeDefinition.js`](demo/treeDefinition.js), a copy of assign-gingerly's tree-demo definition, against [`demo/data/launch.json`](demo/data/launch.json). It shows o2h's HTML next to what builtIns.tree builds in the browser from the same definition, checks that the two are the same DOM, and finishes the server HTML either way: **Apply the residue**, or **Hydrate** (builtIns.tree adopts the server's elements; then the rocket card's "Increase by one" re-renders it). With `style: true`, the pending parts (the links bar, the rocket card) stay hidden until then.
 
 ## Viewing Locally
 
@@ -60,6 +69,7 @@ Pages get their import map from `<!-- #include virtual="/imports.html" -->` (spa
 - **Test:** `npm test` (Playwright).
   - **Unit tests** run o2h in Node, with no DOM, as on a server.
   - **The equivalence test** checks, in Chromium, Firefox and WebKit, that o2h's HTML, finished with `applyResidue`, matches what builtIns.tree builds from the demo definition.
+  - **The hydration test** checks that builtIns.tree (`adopt: true`) adopts o2h's HTML: every element reused, the same DOM as Tree's own, and the rocket card re-rendering on "Increase by one".
   - **Inside the workspace,** the browser tests are served from the workspace folder (port 8090), so they run against the sibling assign-gingerly. Otherwise they use the published package.
 
 The previous implementation is kept in [`legacy/`](legacy/) for reference.
