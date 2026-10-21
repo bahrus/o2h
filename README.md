@@ -24,6 +24,15 @@ await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: true, 
 
 It needs the config and the data on the client (e.g. embedded as JSON). Afterwards everything is live: events and properties are bound, managers are attached and re-render on `ctx.rebind()`, and the `data-pending` marks are removed. If the markup doesn't match the config, Tree rebuilds it instead.
 
+**How it works:**
+1. **The walk:** Tree walks the config and the existing elements together, level by level. It pairs each level's *slots* (its elements, and the `<!--?switch-->` placeholders of switches rendering nothing) with the specs in order. The pairing uses the same functions o2h used to decide what to render: which map keys, which repeat items (by key), and which switch case. Text and whitespace are skipped.
+2. **The bind:** the ordinary bind then runs on the adopted elements. Text that's already right isn't rewritten.
+3. **The fallback:** any mismatch (another tag, another number of children or items) rebuilds the whole tree instead.
+
+Details: [assign-gingerly's tree.md, "How the walk pairs spec and markup"](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/tree.md#how-the-walk-pairs-spec-and-markup).
+
+**`adopt: 'pending'` (experimental)** adopts the same way. On the first run, it binds only the elements marked `data-pending` (with their contents and ancestors, and nested trees' hosts), and trusts the rest of o2h's HTML as is. That halves hydration time or better on mostly static pages (see the benchmark below). The trade-off: anything the client would render differently from the server (newer data, another locale) is only corrected on a later run. See [tree.md, "adopt: 'pending'"](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/tree.md#adopt-pending-experimental-bind-only-whats-pending).
+
 ## Options
 
 | Option | |
