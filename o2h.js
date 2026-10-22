@@ -11,7 +11,7 @@
  * it". The client restores them by hydrating, with builtIns.tree's `adopt: true` and the same
  * config and data, which removes the marks.
  */
-import { chooseCase, isSwitch, mapEntries, normalize, repeatItems } from 'assign-gingerly/handlers/treeSpec.js';
+import { chooseCase, isSnippet, isSwitch, mapEntries, normalize, repeatItems, snippetSource } from 'assign-gingerly/handlers/treeSpec.js';
 import { attributeText, classifyPatternKey } from 'assign-gingerly/handlers/compileTree.js';
 import { getValue, getValues } from 'assign-gingerly/resolve/getValues.js';
 import { planMicroJoin } from 'assign-gingerly/syncOps/microJoin.js';
@@ -47,6 +47,7 @@ export function o2h(config, from, options = {}) {
         pipes: options.pipes,
         protocols: options.protocols,
         managers: options.managers ?? {},
+        snippets: options.snippets,
         unrendered: [],
     };
     let html = options.style ? PENDING_STYLE : '';
@@ -73,6 +74,10 @@ function renderSpec(spec, value, stack, path, ctx) {
             return { html: '<!--?switch-->', elements: 0 };
         return renderSpec(chosen, value, stack, path, ctx);
     }
+    // A snippet: its HTML as is (trimmed, as builtIns.tree trims it), which the client's adopt checks by its root elements.
+    // Without a parser, o2h doesn't count those roots, so later siblings' paths (in `unrendered`) may be off.
+    if (isSnippet(spec))
+        return { html: snippetSource(spec, ctx.snippets), elements: 1 };
     const [, tag, ish, pattern = {}, children, repeat, nested] = normalize(spec);
     const attrs = new Map();
     let pending = false; // something HTML can't carry: the client restores it

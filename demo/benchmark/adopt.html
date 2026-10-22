@@ -39,7 +39,7 @@
         import { o2h } from '../../o2h.js';
         import { assignFromAsync, ItemscopeRegistry, whenEventsBound } from 'assign-gingerly/index.js';
         import { profileConfig, directoryConfig, company, managers as companyManagers } from './companyDefinition.js';
-        import { config as rocketConfig, pipes as rocketPipes, managers as rocketManagers, initialVm } from '../treeDefinition.js';
+        import { config as rocketConfig, pipes as rocketPipes, managers as rocketManagers, snippets as rocketSnippets, initialVm } from '../treeDefinition.js';
 
         const params = new URLSearchParams(location.search);
         const samples = Number(params.get('samples')) || 21;
@@ -49,14 +49,14 @@
 
         const launch = await (await fetch('../data/launch.json')).json();
         const scenarios = [
-            { name: 'Rocket (tree-demo definition)', config: rocketConfig, vm: initialVm(launch), pipes: rocketPipes, managers: rocketManagers, batch: 20 },
+            { name: 'Rocket (tree-demo definition)', config: rocketConfig, vm: initialVm(launch), pipes: rocketPipes, managers: rocketManagers, snippets: rocketSnippets, batch: 20 },
             { name: 'Company profile', config: profileConfig, vm: { company: company(1) }, managers: companyManagers, batch: 20 },
             { name: 'Company directory (100 profiles)', config: directoryConfig, vm: { companies: Array.from({ length: 100 }, (_, i) => company(i)) }, managers: companyManagers, batch: 1 },
         ];
 
         /** Fresh copies of the server HTML, hydrated (or client-rendered) one after another; returns ms per copy. */
         async function time(scenario, mode, copies) {
-            const { config, vm, pipes, managers } = scenario;
+            const { config, vm, pipes, managers, snippets } = scenario;
             const hosts = Array.from({ length: copies }, () => {
                 const host = document.createElement('div');
                 if (mode !== 'client') host.innerHTML = scenario.html;
@@ -66,7 +66,7 @@
             const registry = { itemscopeRegistry: new ItemscopeRegistry(managers) };
             const treeConfig = mode === 'client' ? { do: 'builtIns.tree', ...config } : { do: 'builtIns.tree', adopt: mode, ...config };
             const t0 = performance.now();
-            for (const host of hosts) await assignFromAsync(host, { '?. =>': treeConfig }, { from: vm, pipes, registry });
+            for (const host of hosts) await assignFromAsync(host, { '?. =>': treeConfig }, { from: vm, pipes, snippets, registry });
             const elapsed = (performance.now() - t0) / copies;
             const last = hosts.at(-1);
             for (const host of hosts.slice(0, -1)) host.remove();
@@ -88,7 +88,7 @@
         const tbody = document.querySelector('#results tbody');
         const results = [];
         for (const scenario of scenarios) {
-            const { html } = o2h(scenario.config, scenario.vm, { pipes: scenario.pipes, managers: scenario.managers });
+            const { html } = o2h(scenario.config, scenario.vm, { pipes: scenario.pipes, managers: scenario.managers, snippets: scenario.snippets });
             scenario.html = html;
             const { total, bound } = boundCount(html);
 

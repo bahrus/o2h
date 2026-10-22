@@ -11,7 +11,7 @@
   <script type="module">
     import { o2h } from '../o2h.js';
     import { assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
-    import { config, pipes, managers, initialVm } from '../demo/treeDefinition.js';
+    import { config, pipes, managers, snippets, initialVm } from '../demo/treeDefinition.js';
 
     const differences = [];
     const complete = document.getElementById('test-complete');
@@ -19,7 +19,7 @@
       const vm = initialVm(await (await fetch('../demo/data/launch.json')).json());
 
       // o2h's HTML, parsed (not finished: hydration.html covers that)
-      const { html } = o2h(config, vm, { pipes, managers });
+      const { html } = o2h(config, vm, { pipes, managers, snippets });
       const server = document.createElement('div');
       server.innerHTML = html;
       if (!server.querySelector('[data-pending]')) differences.push('o2h marked no pending elements');
@@ -27,7 +27,7 @@
       // builtIns.tree, from the same definition
       const client = document.createElement('div');
       await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, {
-        from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
+        from: vm, pipes, snippets, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
       });
 
       // Node by node; the intended differences are the data-pending marks and itemscope="<manager>", which o2h adds for the client

@@ -215,7 +215,7 @@
     <script type="module">
         import { o2h } from '../o2h.js';
         import { assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
-        import { config, pipes, managers, initialVm, setLog } from './treeDefinition.js';
+        import { config, pipes, managers, snippets, initialVm, setLog } from './treeDefinition.js';
 
         const logEl = document.getElementById('log');
         const log = (source, message) => {
@@ -232,7 +232,7 @@
         const vm = initialVm(response);
 
         // "Server": the config and data in, an HTML string out
-        const { html, unrendered } = o2h(config, vm, { pipes, managers, style: true });
+        const { html, unrendered } = o2h(config, vm, { pipes, managers, snippets, style: true });
         const server = document.getElementById('server');
         server.innerHTML = html;
         document.getElementById('html').textContent = html;
@@ -242,7 +242,7 @@
         // Client: builtIns.tree, with the same definition (managers registered locally)
         const itemscopeRegistry = new ItemscopeRegistry(managers);
         const client = document.getElementById('client');
-        await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, { from: vm, pipes, registry: { itemscopeRegistry } });
+        await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, { from: vm, pipes, snippets, registry: { itemscopeRegistry } });
 
         // Compare the two, before either one changes (the links manager verifies asynchronously).
         // Ignored: o2h's style element, the data-pending marks (hydration removes them), and
@@ -269,7 +269,7 @@
         hydrateButton.addEventListener('click', async () => {
             const before = [...server.querySelectorAll('*')];
             await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } },
-                { from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) } });
+                { from: vm, pipes, snippets, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) } });
             const reused = [...server.querySelectorAll('*')].filter((el, i) => el === before[i]).length;
             hydrateButton.disabled = true;
             log('builtIns.tree adopt', `${reused} of ${before.length} elements adopted (not rebuilt); ${server.querySelectorAll('[data-pending]').length} still pending`);

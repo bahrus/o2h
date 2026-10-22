@@ -11,7 +11,7 @@
   <script type="module">
     import { o2h } from '../o2h.js';
     import { assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
-    import { config, pipes, managers, initialVm } from '../demo/treeDefinition.js';
+    import { config, pipes, managers, snippets, initialVm } from '../demo/treeDefinition.js';
 
     const differences = [];
     const complete = document.getElementById('test-complete');
@@ -20,13 +20,13 @@
       const vm = initialVm(await (await fetch('../demo/data/launch.json')).json());
 
       // The server's HTML, hydrated: builtIns.tree adopts it instead of rebuilding
-      const { html } = o2h(config, vm, { pipes, managers });
+      const { html } = o2h(config, vm, { pipes, managers, snippets });
       const server = document.createElement('div');
       server.innerHTML = html;
       document.body.append(server);
       const before = [...server.querySelectorAll('*')];
       await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, {
-        from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
+        from: vm, pipes, snippets, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
       });
       const after = [...server.querySelectorAll('*')];
       if (before.length !== after.length || before.some((el, i) => el !== after[i])) differences.push('adopt: elements were rebuilt instead of adopted');
@@ -35,7 +35,7 @@
       // Same DOM as builtIns.tree builds on its own (apart from itemscope="<manager>", which o2h adds)
       const client = document.createElement('div');
       await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, {
-        from: vm, pipes, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
+        from: vm, pipes, snippets, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
       });
       const strip = host => {
         const copy = host.cloneNode(true);

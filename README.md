@@ -40,6 +40,7 @@ Details: [assign-gingerly's tree.md, "How the walk pairs spec and markup"](https
 | `pipes` | Named unary functions usable as path segments (`'?.date_utc?.parseDate?.longUtc'`) |
 | `aka` | Aliases, under the config's own `aka` |
 | `protocols` | Synchronous protocol handlers (`name://key` values) |
+| `snippets` | Static HTML for `{ snippet: 'name' }` specifications, by name: written as is (trimmed). The same option builtIns.tree takes, which also checks it on the client (see [tree.md, Snippets](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/tree.md#snippets-static-html)). |
 | `managers` | Itemscope manager classes by registered name. With one, a `{ tag, ish: 'name' }` element's subtree renders from the manager's getters. Either way, the element gets `itemscope="name"`, so the client can attach the manager. |
 | `style` | Prepend the default style, which hides pending parts, only when scripts run (so crawlers and no-JS readers see everything): `<style>@media (scripting: enabled) { [data-pending] { visibility: hidden; } }</style>`. Also exported as `PENDING_STYLE`. |
 

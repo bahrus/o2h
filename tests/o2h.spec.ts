@@ -68,16 +68,35 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(PENDING_STYLE).toBe('<style>@media (scripting: enabled) { [data-pending] { visibility: hidden; } }</style>');
   });
 
+  test('writes snippets as is (trimmed), and refuses a name it isn\'t given', async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const { tree, snippet } = await import(url('node_modules/assign-gingerly/DX/tree.js'));
+    const snippets = { logo: '\n  <svg viewBox="0 0 2 2"><path d="M0 0"/></svg> <b>Two roots</b>\n' };
+    const config = {
+      map: {
+        banner: snippet('logo'),
+        card: tree`<article>${snippet('logo')}<h3>${'?.title'}</h3></article>`,
+      },
+    };
+    const { html } = o2h(config, { banner: 1, card: { title: 'T' } }, { snippets });
+    expect(html).toBe('<!--?start name="tree"-->'
+      + '<svg viewBox="0 0 2 2"><path d="M0 0"/></svg> <b>Two roots</b>'
+      + '<article><svg viewBox="0 0 2 2"><path d="M0 0"/></svg> <b>Two roots</b><h3>T</h3></article>'
+      + '<!--?end-->');
+    expect(() => o2h(config, { banner: 1 })).toThrow(/snippet "logo"/);
+  });
+
   test('renders the demo definition, managers included', async () => {
     const { o2h } = await import(url('o2h.js'));
-    const { config, pipes, managers, initialVm } = await import(url('demo/treeDefinition.js'));
+    const { config, pipes, managers, snippets, initialVm } = await import(url('demo/treeDefinition.js'));
     const fs = await import('node:fs');
     const response = JSON.parse(fs.readFileSync(new URL('../demo/data/launch.json', import.meta.url), 'utf8'));
-    const { html, unrendered } = o2h(config, initialVm(response), { pipes, managers });
+    const { html, unrendered } = o2h(config, initialVm(response), { pipes, managers, snippets });
     expect(unrendered).toEqual([]);
     // Manager getters rendered on the server; the managers are named for the client
     expect(html).toMatch(/<section itemscope="rocket-manager" class="card rocket" data-pending><h3>Rocket: Falcon 9<\/h3>/);
     expect(html).toContain('<span>549,054 kg</span>');
+    expect(html).toContain('<h3>Rocket: Falcon 9</h3><svg class="icon"');   // the snippet, as is
     expect(html).toMatch(/<nav itemscope="links-manager" class="links verifying" aria-label="Launch links" data-pending>/);
     expect(html).toContain('<li><a href="https://example.com/webcast/demo-mission-7" target="_blank" rel="noopener">webcast</a></li>');
     expect(html.match(/ data-pending\b/g)).toHaveLength(3);

@@ -2,7 +2,7 @@
 // (pipes, itemscope managers, the tree`…` map), expected to drift from it as o2h issues are worked through.
 // Importable both in a browser (with an import map for 'assign-gingerly/') and on a server.
 
-import { tree, each, choose } from 'assign-gingerly/DX/tree.js';
+import { tree, each, choose, snippet } from 'assign-gingerly/DX/tree.js';
 
 /** Where the managers report (the demo page sets it). */
 let log = () => {};
@@ -100,6 +100,11 @@ export class LinksManager {
     get className() { return `links ${this.state}`; }
 }
 
+/** Static HTML the tree names with snippet('…'): written as is by o2h, cloned by builtIns.tree, never rebound. */
+export const snippets = {
+    'rocket-icon': `<svg class="icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2c3 3 4.5 7 4.5 11L12 17.5 7.5 13C7.5 9 9 5 12 2zm0 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM7 15l-3 3h4zm10 0 3 3h-4zm-5 4-1.5 3h3z"/></svg>`,
+};
+
 /** The managers, by the names the tree uses. */
 export const managers = { [RocketManager.is]: RocketManager, [LinksManager.is]: LinksManager };
 
@@ -184,6 +189,7 @@ export const config = {
         rocket: tree`
             <section ish=${RocketManager.is} class="card rocket">
                 <h3>${'?.title'}</h3>
+                ${snippet('rocket-icon')}
                 ${spec('Height', '?.heightLabel', tree`
                     <button type="button" class="inc" @click=${{ call: 'increaseHeightByOne' }}>Increase by one</button>`)}
                 ${spec('Mass', '?.massLabel')}
