@@ -12,12 +12,13 @@
  * config and data, which removes the marks.
  */
 
-import { chooseCase, isSnippet, isSwitch, mapEntries, normalize, repeatItems, snippetSource } from 'assign-gingerly/handlers/treeSpec.js';
+import { chooseCase, isSnippet, isSwitch, mapEntries, normalize, repeatItems, snippetParts, snippetSource } from 'assign-gingerly/handlers/treeSpec.js';
+import type { SnippetHolePart, SnippetPart } from 'assign-gingerly/handlers/treeSpec.js';
 import { attributeText, classifyPatternKey } from 'assign-gingerly/handlers/compileTree.js';
 import { getValue, getValues } from 'assign-gingerly/resolve/getValues.js';
 import { planMicroJoin } from 'assign-gingerly/syncOps/microJoin.js';
 import { assignFrom } from 'assign-gingerly/assignFrom.js';
-import type { ElementSpecification } from 'assign-gingerly/types/treeTypes.js';
+import type { ElementSpecification, HoleSpecification } from 'assign-gingerly/types/treeTypes.js';
 import type { O2HConfig, O2HManager, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
 
 export type { O2HConfig, O2HManager, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
@@ -92,12 +93,26 @@ export function o2h(config: O2HConfig, from: any, options: O2HOptions = {}): O2H
     return { html, unrendered: ctx.unrendered };
 }
 
+/** Snippets split at their holes, by source (parsed once). */
+const snippetPartsBySource = new Map<string, SnippetPart[]>();
+
+function partsOf(source: string): SnippetPart[] {
+    let parts = snippetPartsBySource.get(source);
+    if (!parts) snippetPartsBySource.set(source, parts = snippetParts(source));
+    return parts;
+}
+
+/** The spec of the element a hole value fills: the hole's tag as the header (as builtIns.tree builds it). */
+function holeSpecOf(tag: string, hole: HoleSpecification): ElementSpecification {
+    return (Array.isArray(hole) ? [tag, ...hole] : [tag, hole]) as ElementSpecification;
+}
+
 function resolveOptions(stack: any[], ctx: Context): ResolveOptions {
     return { pipes: ctx.pipes, aka: ctx.aka, protocols: ctx.protocols, fromStack: stack };
 }
 
 /** Render one specification (an element, or a switch) at `path`. */
-function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: number[], ctx: Context): Rendered {
+function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: number[], ctx: Context, hole?: SnippetHolePart): Rendered {
     const options = resolveOptions(stack, ctx);
     if (isSwitch(spec)) {
         const { spec: chosen } = chooseCase(spec, value, (p, v) => getValue(p, v, options as any));
@@ -105,11 +120,26 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
         if (chosen == null) return { html: '<!--?switch-->', elements: 0 };
         return renderSpec(chosen, value, stack, path, ctx);
     }
-    // A snippet: its HTML as is (trimmed, as builtIns.tree trims it), which the client's adopt checks by its root elements.
-    // Without a parser, o2h doesn't count those roots, so later siblings' paths (in `unrendered`) may be off.
-    if (isSnippet(spec)) return { html: snippetSource(spec, ctx.snippets), elements: 1 };
+    // A snippet: its HTML as is (trimmed, as builtIns.tree trims it), which the client's adopt checks by its root elements,
+    // with the holes the spec names rendered like elements (starting from the hole's own attributes and fallback content),
+    // and the rest written back without data-hole. Without a parser, o2h doesn't count the roots, so later siblings' paths
+    // (in `unrendered`) may be off.
+    if (isSnippet(spec)) {
+        let html = '';
+        for (const part of partsOf(snippetSource(spec, ctx.snippets))) {
+            if (typeof part === 'string') {
+                html += part;
+                continue;
+            }
+            const hole = spec.holes?.[part.hole];
+            html += hole === undefined
+                ? part.open + part.fallback + part.close
+                : renderSpec(holeSpecOf(part.tag, hole), value, stack, path, ctx, part).html;
+        }
+        return { html, elements: 1 };
+    }
     const [, tag, ish, pattern = {}, children, repeat, nested] = normalize(spec);
-    const attrs = new Map<string, string>();
+    const attrs = new Map<string, string>(hole?.attrs);
     let pending = false;   // something HTML can't carry: the client restores it
     let content: string | undefined;   // the element's own text / microJoin, as HTML
 
@@ -209,6 +239,8 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
     for (const [name, text] of attrs) html += text === '' ? ` ${name}` : ` ${name}="${escapeAttr(text)}"`;
     html += '>';
     if (VOID_TAGS.has(tag)) return { html, elements: 1 };
+    // A hole keeps its fallback content unless it's filled with content (text or children), as in builtIns.tree
+    if (hole && content === undefined && children.length === 0 && !repeat && !nested) content = hole.fallback;
     // As in builtIns.tree, an element's own text comes first, then its children
     return { html: html + (content ?? '') + inner + `</${tag}>`, elements: 1 };
 }

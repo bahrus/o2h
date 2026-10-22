@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>o2h snippet holes vs builtIns.tree</title>
+  <!-- #include virtual="/imports.html" -->
+</head>
+<body>
+  <pre id="differences"></pre>
+  <div id="test-complete" style="display:none;" data-status=""></div>
+  <script type="module">
+    import { o2h } from '../o2h.js';
+    import { assignFromAsync } from 'assign-gingerly/index.js';
+    import { tree, each, snippet } from 'assign-gingerly/DX/tree.js';
+
+    // Snippets with holes: text, a repeat, a pattern alone (fallback kept), static children, an unfilled hole,
+    // attributes with entities, SVG, and a hole in a repeat's items
+    const snippets = {
+      card: String.raw`
+        <header class="card-head"><svg class="icon" viewBox="0 0 24 24"><path d="M2 2 L22 22"/></svg><h3 data-hole="title" title="A &amp; B">Untitled</h3></header>
+        <ul class="specs" data-hole="specs"><li>No specs</li></ul>
+        <p class="note" data-hole="note">Fallback <em>note</em></p>
+        <aside data-hole="unfilled">Left as written</aside>
+        <footer>Static footer</footer>`,
+      row: String.raw`<li class="row"><span>•</span> <b data-hole="label">?</b></li>`,
+    };
+    const config = {
+      map: {
+        card: { snippet: 'card', holes: {
+          title: '?.name',
+          specs: [{}, { each: ['li', '?.'], of: '?.specs' }],
+          note: { 'data-state :=': '?.state', 'class :=': 'note busy' },
+        } },
+        list: tree`<ul class="list" ${each('?.', { key: '?.id' })}>${snippet('row', { label: '?.name' })}</ul>`,
+        wrap: tree`<section>${snippet('row', { label: [{ className: 'two' }, [['b', '?.a'], ['i', '?.b']]] })}</section>`,
+      },
+    };
+    const vm = {
+      card: { name: 'Falcon <9>', specs: ['70 m', '549 t'], state: 'ok' },
+      list: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }],
+      wrap: { a: 'x', b: 'y' },
+    };
+
+    const differences = [];
+    const complete = document.getElementById('test-complete');
+    try {
+      const { html, unrendered } = o2h(config, vm, { snippets });
+      if (unrendered.length) differences.push(`unrendered: ${JSON.stringify(unrendered)}`);
+      if (html.includes('data-hole')) differences.push('o2h left data-hole attributes');
+      const server = document.createElement('div');
+      server.innerHTML = html;
+      document.body.append(server);
+
+      // The same DOM as builtIns.tree builds
+      const client = document.createElement('div');
+      await assignFromAsync(client, { '?. =>': { do: 'builtIns.tree', ...config } }, { from: vm, snippets });
+      if (!server.isEqualNode(client)) {
+        differences.push('o2h\'s DOM differs from builtIns.tree\'s');
+        console.log({ server: server.innerHTML, client: client.innerHTML });
+      }
+
+      // Adopted: every element reused, then live
+      const before = [...server.querySelectorAll('*')];
+      await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, { from: vm, snippets });
+      const after = [...server.querySelectorAll('*')];
+      if (before.length !== after.length || before.some((el, i) => el !== after[i])) differences.push('adopt: elements were rebuilt');
+      await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', ...config } }, {
+        from: { ...vm, card: { name: 'Starship', specs: ['121 m'], state: 'busy' }, list: [{ id: 2, name: 'B2' }, { id: 1, name: 'A' }] }, snippets,
+      });
+      const h3 = server.querySelector('h3');
+      if (h3 !== before.find(el => el.localName === 'h3') || h3.textContent !== 'Starship') differences.push(`rerun: the title hole (${h3.textContent})`);
+      if (server.querySelectorAll('.specs li').length !== 1) differences.push('rerun: the specs hole');
+      if ([...server.querySelectorAll('.list b')].map(b => b.textContent).join(',') !== 'B2,A') differences.push('rerun: the repeat\'s holes');
+      if (server.querySelector('aside').textContent !== 'Left as written') differences.push('the unfilled hole changed');
+    } catch (e) {
+      differences.push(`error: ${e.message}`);
+    }
+    document.getElementById('differences').textContent = differences.join('\n');
+    complete.dataset.status = differences.length === 0 ? 'success' : 'failure';
+  </script>
+</body>
+</html>

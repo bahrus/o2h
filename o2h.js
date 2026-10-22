@@ -11,7 +11,7 @@
  * it". The client restores them by hydrating, with builtIns.tree's `adopt: true` and the same
  * config and data, which removes the marks.
  */
-import { chooseCase, isSnippet, isSwitch, mapEntries, normalize, repeatItems, snippetSource } from 'assign-gingerly/handlers/treeSpec.js';
+import { chooseCase, isSnippet, isSwitch, mapEntries, normalize, repeatItems, snippetParts, snippetSource } from 'assign-gingerly/handlers/treeSpec.js';
 import { attributeText, classifyPatternKey } from 'assign-gingerly/handlers/compileTree.js';
 import { getValue, getValues } from 'assign-gingerly/resolve/getValues.js';
 import { planMicroJoin } from 'assign-gingerly/syncOps/microJoin.js';
@@ -61,11 +61,23 @@ export function o2h(config, from, options = {}) {
     html += '<!--?end-->';
     return { html, unrendered: ctx.unrendered };
 }
+/** Snippets split at their holes, by source (parsed once). */
+const snippetPartsBySource = new Map();
+function partsOf(source) {
+    let parts = snippetPartsBySource.get(source);
+    if (!parts)
+        snippetPartsBySource.set(source, parts = snippetParts(source));
+    return parts;
+}
+/** The spec of the element a hole value fills: the hole's tag as the header (as builtIns.tree builds it). */
+function holeSpecOf(tag, hole) {
+    return (Array.isArray(hole) ? [tag, ...hole] : [tag, hole]);
+}
 function resolveOptions(stack, ctx) {
     return { pipes: ctx.pipes, aka: ctx.aka, protocols: ctx.protocols, fromStack: stack };
 }
 /** Render one specification (an element, or a switch) at `path`. */
-function renderSpec(spec, value, stack, path, ctx) {
+function renderSpec(spec, value, stack, path, ctx, hole) {
     const options = resolveOptions(stack, ctx);
     if (isSwitch(spec)) {
         const { spec: chosen } = chooseCase(spec, value, (p, v) => getValue(p, v, options));
@@ -74,12 +86,26 @@ function renderSpec(spec, value, stack, path, ctx) {
             return { html: '<!--?switch-->', elements: 0 };
         return renderSpec(chosen, value, stack, path, ctx);
     }
-    // A snippet: its HTML as is (trimmed, as builtIns.tree trims it), which the client's adopt checks by its root elements.
-    // Without a parser, o2h doesn't count those roots, so later siblings' paths (in `unrendered`) may be off.
-    if (isSnippet(spec))
-        return { html: snippetSource(spec, ctx.snippets), elements: 1 };
+    // A snippet: its HTML as is (trimmed, as builtIns.tree trims it), which the client's adopt checks by its root elements,
+    // with the holes the spec names rendered like elements (starting from the hole's own attributes and fallback content),
+    // and the rest written back without data-hole. Without a parser, o2h doesn't count the roots, so later siblings' paths
+    // (in `unrendered`) may be off.
+    if (isSnippet(spec)) {
+        let html = '';
+        for (const part of partsOf(snippetSource(spec, ctx.snippets))) {
+            if (typeof part === 'string') {
+                html += part;
+                continue;
+            }
+            const hole = spec.holes?.[part.hole];
+            html += hole === undefined
+                ? part.open + part.fallback + part.close
+                : renderSpec(holeSpecOf(part.tag, hole), value, stack, path, ctx, part).html;
+        }
+        return { html, elements: 1 };
+    }
     const [, tag, ish, pattern = {}, children, repeat, nested] = normalize(spec);
-    const attrs = new Map();
+    const attrs = new Map(hole?.attrs);
     let pending = false; // something HTML can't carry: the client restores it
     let content; // the element's own text / microJoin, as HTML
     // A manager: itemscope names it, so the client attaches it.
@@ -194,6 +220,9 @@ function renderSpec(spec, value, stack, path, ctx) {
     html += '>';
     if (VOID_TAGS.has(tag))
         return { html, elements: 1 };
+    // A hole keeps its fallback content unless it's filled with content (text or children), as in builtIns.tree
+    if (hole && content === undefined && children.length === 0 && !repeat && !nested)
+        content = hole.fallback;
     // As in builtIns.tree, an element's own text comes first, then its children
     return { html: html + (content ?? '') + inner + `</${tag}>`, elements: 1 };
 }
