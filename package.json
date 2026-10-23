@@ -15,7 +15,10 @@
     "o2h.ts",
     "types/o2h/types.d.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "o2h-sw.js",
+    "worker/*.js",
+    "worker/*.ts"
   ],
   "exports": {
     ".": {
@@ -25,12 +28,22 @@
     "./o2h.js": {
       "types": "./types/o2h/types.d.ts",
       "default": "./o2h.js"
-    }
+    },
+    "./worker/client.js": {
+      "types": "./worker/client.ts",
+      "default": "./worker/client.js"
+    },
+    "./worker/core.js": {
+      "types": "./worker/core.ts",
+      "default": "./worker/core.js"
+    },
+    "./o2h-sw.js": "./o2h-sw.js"
   },
   "types": "types/o2h/types.d.ts",
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
+    "build:worker": "node worker/build.mjs",
     "serve": "node ./node_modules/spa-ssi/serve.js",
     "test": "playwright test",
     "package-check": "package-check",
@@ -38,10 +51,11 @@
     "update": "ncu -u && npm install"
   },
   "dependencies": {
-    "assign-gingerly": "0.0.102"
+    "assign-gingerly": "0.0.103"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
+    "esbuild": "^0.28.2",
     "spa-ssi": "0.0.28"
   },
   "repository": {

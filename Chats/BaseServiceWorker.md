@@ -201,3 +201,78 @@ With those two answers, I'll implement Phase I as described, with Playwright tes
 - that page hydrating from it;
 - pass-through for unmarked requests;
 - the `X-O2H-Error` fallback.
+
+## Bruce's Response II
+
+> 1. **Bundling:** OK to add **esbuild** as an o2h dev dependency, with a `build:worker` script (option 1)?
+
+Good catch.  Looks like that is the least painful approach, so let's do that.
+
+> 2. **One IndexedDB record** `{ config, options }` per `X-O2H-Config` key, or two headers and two records?
+
+Sure, one record is fine.
+
+
+## Claude's Implementation Notes
+
+Phase I is in. It covers script fetches only: one `X-O2H-Config` header, one IndexedDB record `{ config, options }` per key, JSON-only records, and a module service worker bundled with esbuild.
+
+### The modules (`o2h/worker/`)
+
+| File | Runs in | What |
+|---|---|---|
+| **`core.ts`** | any worker with the Fetch API | `isO2HRequest`, `handleO2HRequest(request, lookup)`, `O2H_HEADER`, `O2H_ERROR_HEADER`. Only the Fetch API and o2h, so a Cloudflare Worker can use it later with its own lookup. |
+| **`store.ts`** | page and service worker | IndexedDB database `o2h`, store `records`: `storeO2HRecord`, `getO2HRecord`, `deleteO2HRecord` |
+| **`serviceWorker.ts`** | service worker | The entry. `skipWaiting()` on install and `clients.claim()` on activate, so a first visit is controlled without a reload. The `fetch` listener only responds to marked requests. |
+| **`client.ts`** | page | `whenO2HWorkerReady(url)`: registers the worker as a module, and resolves once it **controls the page**, so every fetch after it goes through the worker. Also re-exports the store functions and `O2H_HEADER`. |
+| **`build.mjs`** | Node | Bundles `serviceWorker.ts` into **`o2h-sw.js`** (at o2h's root) with esbuild, as an ES module. In the workspace, it takes assign-gingerly from the sibling repo, as the workspace's import map does for pages; otherwise from `node_modules`. |
+
+**What `handleO2HRequest` does**, as agreed:
+- **Forwarding:** the request goes upstream without `X-O2H-Config`.
+- **Not OK, or not JSON** (`application/json` or `+json`): the response is returned as is.
+- **Missing record, or a render error:** the original JSON, with `X-O2H-Error` (Latin-1, and at most 300 characters).
+- **Success:** `o2h(config, json, { ...options, embed })`. `embed` keeps the record's `{ check: false }` if it has one, and is otherwise `true`. The response is `text/html; charset=utf-8`, minus `Content-Length` / `Content-Encoding`, with `Vary: X-O2H-Config`, and the upstream status.
+
+### Packaging and build
+
+- **`package.json`:**
+  - `esbuild` is a dev dependency;
+  - `npm run build:worker` builds the bundle;
+  - `files` gains `o2h-sw.js` and `worker/*.js|ts`;
+  - `exports` gains `./worker/client.js`, `./worker/core.js` and `./o2h-sw.js`.
+- **`tsconfig.json`:** includes `worker/*.ts`, so `tsc` emits `client.js` and `store.js` for pages.
+- **npm's install script for esbuild didn't run.** Newer npm asks before running install scripts. esbuild works without it, since its platform binary came as an optional dependency (`@esbuild/win32-x64`). `npm install-scripts approve esbuild` would let the script run, if you want that.
+- **The bundle is 207 KB,** unminified. Most of it is assign-gingerly code reached through o2h's import of `assignFrom.js`. Trimming that (o2h needs only part of it) would be a follow-up, if size matters.
+- **`o2h-sw.js` is build output,** like `o2h.js`, so it's committed and published.
+
+### Tests
+
+**`tests/service-worker.html`** (with the fixture `tests/data/mission.json`), as a new browser test in `tests/o2h.spec.ts`. It runs through the real service worker, in **Chromium, Firefox and WebKit**, and checks:
+- **The ready promise:** `whenO2HWorkerReady` resolves with the page controlled.
+- **A marked fetch:**
+  - the response is `text/html; charset=utf-8` with `Vary`;
+  - the exact rendered HTML, including a repeat and escaped text;
+  - the JSON embedded after the tree;
+  - the data round-trips, `</script>` included.
+- **Hydration:** `builtIns.tree` with `adopt`, from the embedded data, reuses every element.
+- **Unmarked fetches:** untouched JSON.
+- **A missing key:** the original JSON, with `X-O2H-Error: no record for "…"`.
+- **A render failure** (a snippet the options don't have): the original JSON, with `X-O2H-Error: rendering failed (…)`.
+- **Marked, but not JSON:** untouched.
+
+**o2h's browser tests:** 12 passed (the new one in three browsers). The Node tests are unaffected, since `o2h.ts` didn't change.
+
+### For you
+
+- **New files:**
+  - `worker/` (the `.ts` sources, their `.js` output, and `build.mjs`);
+  - `o2h-sw.js`;
+  - `tests/service-worker.html`, `tests/data/mission.json`.
+- **Changed:** `package.json` (with `package-lock.json`), `tsconfig.json`, the README ("Service worker (Phase I)" section), and `tests/o2h.spec.ts`.
+
+### Later phases (from this discussion)
+
+- **A Cloudflare entry,** using `worker/core.js` with a KV or bundled lookup.
+- **Pipes, protocols and managers** for per-key records: the separate discussion.
+- **A fallback** where the page renders the JSON itself when no worker is active (Phase II).
+- **Navigations,** and NDJSON / streaming.

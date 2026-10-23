@@ -1,0 +1,6 @@
+{
+    "name": "Demo Mission 7",
+    "rocket": { "name": "Falcon 9", "type": "rocket" },
+    "crew": [{ "id": 1, "name": "Avery" }, { "id": 2, "name": "Rowan" }],
+    "note": "Fuel </script> & <b>loading</b>"
+}

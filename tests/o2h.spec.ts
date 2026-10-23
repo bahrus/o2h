@@ -162,6 +162,14 @@ test.describe('o2h vs builtIns.tree', () => {
     expect(await page.getAttribute('#test-complete', 'data-status')).toBe('success');
   });
 
+  test('the service worker renders marked JSON fetches as HTML, which builtIns.tree adopts', async ({ page }) => {
+    page.on('pageerror', err => console.error('Browser error:', err));
+    await page.goto('tests/service-worker.html');
+    await page.waitForSelector('#test-complete[data-status]:not([data-status=""])', { timeout: 20000, state: 'attached' });
+    expect(await page.textContent('#differences')).toBe('');
+    expect(await page.getAttribute('#test-complete', 'data-status')).toBe('success');
+  });
+
   test('snippet holes render the same DOM as builtIns.tree, which adopts it', async ({ page }) => {
     page.on('pageerror', err => console.error('Browser error:', err));
     await page.goto('tests/snippet-holes.html');

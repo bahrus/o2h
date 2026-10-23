@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>o2h service worker</title>
+  <!-- #include virtual="/imports.html" -->
+</head>
+<body>
+  <pre id="differences"></pre>
+  <div id="test-complete" style="display:none;" data-status=""></div>
+  <script type="module">
+    import { whenO2HWorkerReady, storeO2HRecord, O2H_HEADER } from '../worker/client.js';
+    import { assignFromAsync } from 'assign-gingerly/index.js';
+
+    const differences = [];
+    const check = (condition, message) => { if (!condition) differences.push(message); };
+    const complete = document.getElementById('test-complete');
+    try {
+      // The worker (o2h-sw.js, at o2h's root, so its scope covers this page) controls the page before any o2h fetch
+      await whenO2HWorkerReady('../o2h-sw.js');
+      check(navigator.serviceWorker.controller, 'the worker should control the page');
+
+      // The page stores the record its requests name: JSON-only config and options
+      const config = {
+        map: {
+          name: ['h2', '?.'],
+          rocket: ['section', { 'class :=': 'card' }, [['h3', '?.name'], ['p', '?.type']]],
+          crew: ['ul', {}, { each: ['li', '?.name'], key: '?.id' }],
+          note: ['p', '?.'],
+        },
+      };
+      await storeO2HRecord('mission-card', { config, options: {} });
+      await storeO2HRecord('broken', { config: { map: { name: { snippet: 'missing' } } } });
+
+      // A marked fetch: HTML, with the JSON embedded after it
+      const response = await fetch('data/mission.json', { headers: { [O2H_HEADER]: 'mission-card' } });
+      check(response.headers.get('Content-Type') === 'text/html; charset=utf-8', `marked: Content-Type ${response.headers.get('Content-Type')}`);
+      check((response.headers.get('Vary') ?? '').includes(O2H_HEADER), 'marked: Vary names the header');
+      check(!response.headers.get('X-O2H-Error'), `marked: unexpected error ${response.headers.get('X-O2H-Error')}`);
+      const html = await response.text();
+      check(html.startsWith('<!--?start name="tree"--><h2>Demo Mission 7</h2><section class="card"><h3>Falcon 9</h3><p>rocket</p></section>'),
+        `marked: rendered HTML (${html.slice(0, 120)})`);
+      check(html.includes('<li>Avery</li><li>Rowan</li>'), 'marked: the repeat');
+      check(html.includes('<p>Fuel &lt;/script&gt; &amp; &lt;b&gt;loading&lt;/b&gt;</p>'), 'marked: text escaped');
+      check(html.includes('<!--?end--><script type="application/json" data-tree="tree">'), 'marked: the JSON embedded after the tree');
+
+      // The page hydrates from it: builtIns.tree adopts every element, from the embedded data
+      const host = document.createElement('div');
+      host.innerHTML = html;
+      document.body.append(host);
+      const data = JSON.parse(host.querySelector('script[type="application/json"][data-tree="tree"]').textContent);
+      check(data.note === 'Fuel <\/script> & <b>loading</b>', 'embedded: the data round-trips, <\/script> included');
+      const before = [...host.querySelectorAll('*')];
+      await assignFromAsync(host, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, { from: data });
+      const after = [...host.querySelectorAll('*')];
+      check(before.length === after.length && before.every((el, i) => el === after[i]), 'hydration: every element adopted');
+
+      // Unmarked: untouched JSON
+      const plain = await fetch('data/mission.json');
+      check((plain.headers.get('Content-Type') ?? '').startsWith('application/json'), `unmarked: Content-Type ${plain.headers.get('Content-Type')}`);
+      check((await plain.json()).name === 'Demo Mission 7', 'unmarked: the JSON');
+
+      // No record for the key: the original JSON, with X-O2H-Error
+      const missing = await fetch('data/mission.json', { headers: { [O2H_HEADER]: 'no-such-key' } });
+      check((missing.headers.get('X-O2H-Error') ?? '').includes('no record for "no-such-key"'), `missing: X-O2H-Error ${missing.headers.get('X-O2H-Error')}`);
+      check((await missing.json()).name === 'Demo Mission 7', 'missing: the original JSON');
+
+      // Rendering fails (a snippet the options don't have): the original JSON, with X-O2H-Error
+      const broken = await fetch('data/mission.json', { headers: { [O2H_HEADER]: 'broken' } });
+      check((broken.headers.get('X-O2H-Error') ?? '').includes('rendering failed'), `broken: X-O2H-Error ${broken.headers.get('X-O2H-Error')}`);
+      check((await broken.json()).name === 'Demo Mission 7', 'broken: the original JSON');
+
+      // Marked, but the response isn't JSON: untouched
+      const page = await fetch('service-worker.html', { headers: { [O2H_HEADER]: 'mission-card' } });
+      check((page.headers.get('Content-Type') ?? '').startsWith('text/html') && (await page.text()).includes('o2h service worker'), 'non-JSON: untouched');
+    } catch (e) {
+      differences.push(`error: ${e.message}`);
+    }
+    document.getElementById('differences').textContent = differences.join('\n');
+    complete.dataset.status = differences.length === 0 ? 'success' : 'failure';
+  </script>
+</body>
+</html>

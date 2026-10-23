@@ -1,0 +1,77 @@
+/**
+ * The shared core of o2h's workers: turns a JSON API response into HTML (plus the JSON, embedded), for
+ * requests marked with an `X-O2H-Config` header. Only the Fetch API and o2h, so the same code can serve
+ * a service worker (worker/serviceWorker.ts) and, later, a Cloudflare Worker; each supplies its own lookup.
+ *
+ * - Not marked: not handled (callers check isO2HRequest first).
+ * - Marked: the request is forwarded without the header (so a cross-origin API never sees it, and no
+ *   CORS preflight is caused by it).
+ * - The upstream response isn't OK, or isn't JSON: returned as is.
+ * - No record for the key, or rendering fails: the original JSON, with an `X-O2H-Error` header saying why,
+ *   so the page can fall back to rendering it itself.
+ * - Otherwise: o2h(config, json, { ...options, embed }) as text/html, with `Vary: X-O2H-Config`.
+ */
+
+import { o2h } from '../o2h.js';
+import type { O2HRecord } from './store.js';
+
+/** The request header naming the record (config and options) to render a JSON response with. */
+export const O2H_HEADER = 'X-O2H-Config';
+
+/** The response header explaining why a marked request came back as JSON. */
+export const O2H_ERROR_HEADER = 'X-O2H-Error';
+
+/** Finds the record a key names (IndexedDB in a service worker; KV or bundled configs elsewhere). */
+export type O2HLookup = (key: string) => Promise<O2HRecord | undefined> | O2HRecord | undefined;
+
+/** Whether a request asks for o2h rendering. */
+export function isO2HRequest(request: Request): boolean {
+    return request.headers.has(O2H_HEADER);
+}
+
+/** Handle a marked request: forward it, and render its JSON response as HTML (see the module comment). */
+export async function handleO2HRequest(request: Request, lookup: O2HLookup, fetchUpstream: typeof fetch = fetch): Promise<Response> {
+    const key = request.headers.get(O2H_HEADER)!;
+    const headers = new Headers(request.headers);
+    headers.delete(O2H_HEADER);
+    const upstream = await fetchUpstream(new Request(request, { headers }));
+    if (!upstream.ok || !isJson(upstream.headers.get('Content-Type'))) return upstream;
+
+    let record: O2HRecord | undefined;
+    try {
+        record = await lookup(key);
+    } catch (e) {
+        return withError(upstream, `the record "${key}" couldn't be read (${(e as Error).message})`);
+    }
+    if (!record?.config) return withError(upstream, `no record for "${key}"`);
+
+    let html: string;
+    try {
+        const data = await upstream.clone().json();
+        const { options = {} } = record;
+        html = o2h(record.config, data, { ...options, embed: options.embed || true }).html;
+    } catch (e) {
+        return withError(upstream, `rendering failed (${(e as Error).message})`);
+    }
+    const responseHeaders = new Headers(upstream.headers);
+    responseHeaders.delete('Content-Length');
+    responseHeaders.delete('Content-Encoding');
+    responseHeaders.set('Content-Type', 'text/html; charset=utf-8');
+    responseHeaders.append('Vary', O2H_HEADER);
+    return new Response(html, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
+}
+
+/** application/json, or any +json type. */
+function isJson(contentType: string | null): boolean {
+    const type = contentType?.split(';')[0].trim().toLowerCase() ?? '';
+    return type === 'application/json' || type.endsWith('+json');
+}
+
+/** The upstream response, unchanged but for an X-O2H-Error header (fetch's own headers are immutable, hence the copy). */
+function withError(upstream: Response, message: string): Response {
+    const headers = new Headers(upstream.headers);
+    headers.append('Vary', O2H_HEADER);
+    // Header values must be Latin-1, and short
+    headers.set(O2H_ERROR_HEADER, message.replace(/[^\x20-\x7e]/g, '?').slice(0, 300));
+    return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
+}

@@ -39,6 +39,30 @@ Details: [assign-gingerly's tree.md, "How the walk pairs spec and markup"](https
 
 **`adopt: 'pending'` (experimental)** adopts the same way. On the first run, it binds only the elements marked `data-pending` (with their contents and ancestors, and nested trees' hosts), and trusts the rest of o2h's HTML as is. That halves hydration time or better on mostly static pages (see the benchmark below). The trade-off: anything the client would render differently from the server (newer data, another locale) is only corrected on a later run. See [tree.md, "adopt: 'pending'"](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/tree.md#adopt-pending-experimental-bind-only-whats-pending).
 
+## Service worker (Phase I): JSON fetches rendered as HTML
+
+A service worker can render a page's JSON fetches with o2h, off the main thread: the page gets HTML, with the JSON embedded after it, and hydrates.
+
+```js
+import { whenO2HWorkerReady, storeO2HRecord, O2H_HEADER } from 'o2h/worker/client.js';
+
+await whenO2HWorkerReady('/o2h-sw.js');                          // registered as a module; resolves once it controls the page
+await storeO2HRecord('launch-card', { config, options: {} });    // what the key names: o2h's config and options (JSON only)
+
+const response = await fetch('/api/launch', { headers: { [O2H_HEADER]: 'launch-card' } });
+container.innerHTML = await response.text();                     // HTML, then <script type="application/json" data-tree="tree">
+const data = JSON.parse(container.querySelector('script[data-tree="tree"]').textContent);
+await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, { from: data });
+```
+
+- **Marked requests only:** the worker handles fetches with an `X-O2H-Config` header, and lets everything else through. It forwards the request **without** that header, so a cross-origin API never sees it and no CORS preflight is caused by it.
+- **The record** (`{ config, options }`, in IndexedDB) is keyed by the header's value, so one worker serves very different API calls. The page writes records; the worker only reads them.
+- **The response:** `o2h(config, json, { ...options, embed: true })` as `text/html; charset=utf-8`, with `Vary: X-O2H-Config`.
+- **Falling back:** when the API's response isn't OK, or isn't JSON, it's returned as is. When the record is missing or rendering fails, the original JSON is returned, with an `X-O2H-Error` header saying why.
+- **Functions:** records are stored in IndexedDB, so they can't hold functions: no pipes, protocols or manager classes yet. A manager named in the config renders from the raw value, and hydration attaches it on the client.
+- **The worker file:** workers can't use import maps, so `o2h-sw.js` is a bundle, built from `worker/serviceWorker.ts` with `npm run build:worker` (esbuild). Serve it from a path whose scope covers your pages, e.g. the site root.
+- **Shared with other workers:** `worker/core.js` (`handleO2HRequest(request, lookup)`) is only the Fetch API and o2h, so a Cloudflare Worker can use it with its own lookup (planned).
+
 ## Options
 
 | Option | |
@@ -79,7 +103,7 @@ Pages get their import map from `<!-- #include virtual="/imports.html" -->` (spa
 
 ## Building and testing
 
-- **Build:** `npm run build` (`tsc`), or `npm run watch`. In VS Code, Ctrl+Shift+B offers *tsc: watch - tsconfig.json*.
+- **Build:** `npm run build` (`tsc`), or `npm run watch`. The service worker bundle: `npm run build:worker`. In VS Code, Ctrl+Shift+B offers *tsc: watch - tsconfig.json*.
 - **Test:** `npm test` (Playwright).
   - **Unit tests** run o2h in Node, with no DOM, as on a server.
   - **The equivalence test** checks, in Chromium, Firefox and WebKit, that o2h's HTML matches what builtIns.tree builds from the demo definition (apart from the `data-pending` marks and the managers' `itemscope`).
