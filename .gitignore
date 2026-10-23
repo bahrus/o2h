@@ -1,3 +1,6 @@
 /node_modules
 /playwright-report
 /test-results
+/demo/benchmark/json/embedded.html
+/demo/benchmark/json/embedded-x10.html
+/demo/data/shoelace-x10.json

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Approach 1b: fetch + text() + JSON.parse</title>
+    <script src="harness.js"></script>
+    <style>body { font: 15px/1.5 system-ui, sans-serif; padding: 16px; } pre { background: #8881; padding: 8px; }</style>
+</head>
+<body>
+    <h1>Approach 1b: fetch + text() + JSON.parse</h1>
+    <p><a href="./">All approaches</a></p>
+    <pre id="result">Loading…</pre>
+    <script type="module">
+        // Main thread: fetch the text, then JSON.parse it explicitly (to compare with response.json())
+        const response = await fetch(`../../data/${new URLSearchParams(location.search).get('data') ?? 'shoelace'}.json`, { cache: 'no-store' });
+        const text = await response.text();
+        const t0 = performance.now();
+        const data = JSON.parse(text);
+        benchmarkDone({ step: performance.now() - t0, modules: data.modules.length, note: 'step: JSON.parse alone' });
+    </script>
+</body>
+</html>

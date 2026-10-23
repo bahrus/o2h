@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Approach 1: fetch + response.json()</title>
+    <script src="harness.js"></script>
+    <style>body { font: 15px/1.5 system-ui, sans-serif; padding: 16px; } pre { background: #8881; padding: 8px; }</style>
+</head>
+<body>
+    <h1>Approach 1: fetch + response.json()</h1>
+    <p><a href="./">All approaches</a></p>
+    <pre id="result">Loading…</pre>
+    <script type="module">
+        // Main thread: fetch, then response.json() (does it parse off the main thread?)
+        const t0 = performance.now();
+        const response = await fetch(`../../data/${new URLSearchParams(location.search).get('data') ?? 'shoelace'}.json`, { cache: 'no-store' });
+        const data = await response.json();
+        benchmarkDone({ step: performance.now() - t0, modules: data.modules.length });
+    </script>
+</body>
+</html>

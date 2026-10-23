@@ -86,6 +86,13 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(() => o2h(config, { banner: 1 })).toThrow(/snippet "logo"/);
   });
 
+  test('a map key with a trailing comment renders its VM key again', async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const config = { map: { rocket: ['h3', '?.name'], success: 'span', 'rocket /* summary */': ['p', '?.type'], '*': 'i' } };
+    const { html } = o2h(config, { rocket: { name: 'F9', type: 'rocket' }, success: true, extra: 'x' });
+    expect(html).toBe('<!--?start name="tree"--><h3>F9</h3><span></span><p>rocket</p><i>x</i><!--?end-->');
+  });
+
   test('renders the demo definition, managers included', async () => {
     const { o2h } = await import(url('o2h.js'));
     const { config, pipes, managers, snippets, initialVm } = await import(url('demo/treeDefinition.js'));

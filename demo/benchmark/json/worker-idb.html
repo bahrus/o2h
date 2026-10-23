@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Approach 3b: worker fetch + parse + IndexedDB, read on the main thread</title>
+    <script src="harness.js"></script>
+    <style>body { font: 15px/1.5 system-ui, sans-serif; padding: 16px; } pre { background: #8881; padding: 8px; }</style>
+</head>
+<body>
+    <h1>Approach 3b: worker fetch + parse + IndexedDB, read on the main thread</h1>
+    <p><a href="./">All approaches</a></p>
+    <pre id="result">Loading…</pre>
+    <script type="module">
+        // Cold (default): clear IndexedDB, then a worker fetches, parses and stores; the page reads it back.
+        // Warm (?warm): the data is already stored (a repeat visit); the page only reads it.
+        import { clear, get } from './idb.js';
+        const warm = new URLSearchParams(location.search).has('warm');
+        const read = async note => {
+            const t0 = performance.now();
+            const data = await get('shoelace');   // structured-clone deserialization, on the main thread
+            if (!data) throw new Error('nothing stored yet: open this page without ?warm first');
+            benchmarkDone({ step: performance.now() - t0, modules: data.modules.length, note });
+        };
+        if (warm) {
+            await read('warm: read from IndexedDB only (step: the read)');
+        } else {
+            await clear();
+            const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+            worker.onmessage = event => read(`cold: the worker fetched, parsed and stored in ${event.data.total.toFixed(1)} ms (step: the main thread's read)`);
+            worker.postMessage({ mode: 'idb', data: new URLSearchParams(location.search).get('data') ?? 'shoelace' });
+        }
+    </script>
+</body>
+</html>

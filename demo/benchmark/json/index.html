@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JSON Loading Benchmark</title>
+    <style>body { font: 15px/1.5 system-ui, sans-serif; padding: 16px; max-width: 800px; margin: auto; } code { background: #8881; }</style>
+</head>
+<body>
+    <h1>JSON loading: jank and total time</h1>
+    <p>Each page loads <code>demo/data/shoelace.json</code> (~650 KB) one way, and reports when the data was ready, the main thread's
+        own step, the longest gap between animation frames (jank, in every browser), and long tasks (Chromium only).
+        Open each page in a fresh tab, or run <code>node demo/benchmark/json/run.mjs</code> for medians in Chromium, Firefox and WebKit.</p>
+    <p><a href="baseline.html">Baseline</a>: the same page with no data, for what page startup alone costs.</p>
+    <ol>
+        <li><a href="fetch-json.html">fetch + <code>response.json()</code></a>, and <a href="fetch-text.html">fetch + <code>text()</code> + <code>JSON.parse</code></a></li>
+        <li><a href="embedded.html">JSON embedded in <code>&lt;script type="application/json"&gt;</code> + <code>JSON.parse</code></a>
+            (generate it first: <code>node demo/benchmark/json/embed.mjs</code>)</li>
+        <li><a href="worker-clone.html">a worker fetches and parses, and posts the object back</a>;
+            <a href="worker-idb.html">a worker fetches, parses and stores it in IndexedDB, and the page reads it</a>
+            (then <a href="worker-idb.html?warm">the read alone, as on a repeat visit</a>)</li>
+    </ol>
+</body>
+</html>

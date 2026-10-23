@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Approach 3a: worker fetch + parse, posted back</title>
+    <script src="harness.js"></script>
+    <style>body { font: 15px/1.5 system-ui, sans-serif; padding: 16px; } pre { background: #8881; padding: 8px; }</style>
+</head>
+<body>
+    <h1>Approach 3a: worker fetch + parse, posted back</h1>
+    <p><a href="./">All approaches</a></p>
+    <pre id="result">Loading…</pre>
+    <script type="module">
+        // A worker fetches and parses; the object comes back by structured clone, deserialized on the main thread
+        const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+        worker.onmessage = event => {
+            const t0 = performance.now();
+            const { data, parsed } = event.data;   // deserialization happens here, on the main thread
+            const modules = data.modules.length;
+            benchmarkDone({ step: performance.now() - t0, modules, note: `step: reading the posted object; the worker's fetch + parse took ${parsed.toFixed(1)} ms` });
+        };
+        worker.postMessage({ mode: 'clone', data: new URLSearchParams(location.search).get('data') ?? 'shoelace' });
+    </script>
+</body>
+</html>
