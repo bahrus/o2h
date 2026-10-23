@@ -19,9 +19,9 @@ import { getValue, getValues } from 'assign-gingerly/resolve/getValues.js';
 import { planMicroJoin } from 'assign-gingerly/syncOps/microJoin.js';
 import { assignFrom } from 'assign-gingerly/assignFrom.js';
 import type { ElementSpecification, HoleSpecification } from 'assign-gingerly/types/treeTypes.js';
-import type { O2HConfig, O2HManager, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
+import type { O2HConfig, O2HManager, O2HNotSerializable, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
 
-export type { O2HConfig, O2HManager, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
+export type { O2HConfig, O2HManager, O2HNotSerializable, O2HOptions, O2HResult, O2HUnrendered } from './types/o2h/types.js';
 
 /** Marks an element that lost something HTML can't carry: assign-gingerly's PENDING_ATTRIBUTE. */
 export const PENDING_ATTRIBUTE = 'data-pending' as const;
@@ -68,8 +68,8 @@ type ResolveOptions = { pipes?: O2HOptions['pipes']; aka: Record<string, string>
  *
  * @param config  `{ map, keepNullish?, aka?, markerName? }`: the same JSON builtIns.tree takes
  * @param from    The data (e.g. an API response)
- * @param options Pipes, aka, sync protocols, server-side managers, and the opt-in default style
- * @returns `{ html, unrendered }`
+ * @param options Pipes, aka, sync protocols, server-side managers, snippets, the opt-in default style, and embedding
+ * @returns `{ html, unrendered }`, plus `notSerializable` when embedding with the check
  */
 export function o2h(config: O2HConfig, from: any, options: O2HOptions = {}): O2HResult {
     const { map, keepNullish = false, aka: treeAka, markerName = 'tree' } = config;
@@ -90,7 +90,69 @@ export function o2h(config: O2HConfig, from: any, options: O2HOptions = {}): O2H
         index += rendered.elements;
     }
     html += '<!--?end-->';
-    return { html, unrendered: ctx.unrendered };
+    const result: O2HResult = { html, unrendered: ctx.unrendered };
+    if (options.embed) {
+        // The data the HTML was rendered from, after it (so the content comes first), for the client to hydrate with
+        const check = options.embed === true || options.embed.check !== false;
+        const notSerializable: O2HNotSerializable[] = [];
+        const json = check ? JSON.stringify(from, checkingReplacer(notSerializable)) : stringifyOrExplain(from);
+        result.html += `<script type="application/json" data-tree="${escapeAttr(markerName)}">${escapeScriptJson(json ?? 'null')}</script>`;
+        if (check) result.notSerializable = notSerializable;
+    }
+    return result;
+}
+
+/**
+ * JSON inside a <script>: `<` as \u003c, so no `</script>` or `<!--` in a string can end or change the
+ * element early. Still valid JSON (JSON.parse reads \u003c back as `<`).
+ */
+function escapeScriptJson(json: string): string {
+    return json.replace(/</g, '\\u003c');
+}
+
+/** JSON.stringify without the check: a BigInt (which it can't serialize) gets an explanation. */
+function stringifyOrExplain(from: any): string | undefined {
+    try {
+        return JSON.stringify(from);
+    } catch (e) {
+        throw new Error(`o2h embed: the data can't be serialized as JSON (${(e as Error).message}); embed: true (with the check) finds where`);
+    }
+}
+
+/**
+ * A JSON.stringify replacer that notes, with its path, each value JSON drops or changes: functions,
+ * symbols and BigInts (dropped), non-finite numbers (null), and objects whose prototype is lost (a Date
+ * becomes a string, a Map or Set `{}`, a class instance a plain object). It rides along the stringify the
+ * embed needs anyway: about 3× a plain stringify (roughly 1 ms per 650 KB on a fast machine).
+ */
+function checkingReplacer(notSerializable: O2HNotSerializable[]) {
+    const paths = new WeakMap<object, string>();
+    return function (this: any, key: string, value: any) {
+        const holderPath = paths.get(this);
+        const path = holderPath === undefined ? '?.' : holderPath === '?.' ? `?.${key}` : `${holderPath}?.${key}`;
+        const original = this[key];
+        const type = typeof original;
+        if (type === 'function' || type === 'symbol' || type === 'bigint') {
+            notSerializable.push({ path, kind: type === 'function' ? 'a function (dropped)' : `a ${type} (dropped)` });
+            return undefined;
+        }
+        if (type === 'number' && !Number.isFinite(original)) {
+            notSerializable.push({ path, kind: `${original} (becomes null)` });
+        } else if (original !== null && type === 'object') {
+            const proto = Object.getPrototypeOf(original);
+            if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) {
+                const name = proto?.constructor?.name || 'an object';
+                notSerializable.push({
+                    path,
+                    kind: original instanceof Date ? 'a Date (becomes an ISO string)'
+                        : original instanceof Map || original instanceof Set ? `a ${name} (becomes {})`
+                        : `a ${name} instance (its prototype and getters are lost)`,
+                });
+            }
+        }
+        if (value !== null && typeof value === 'object') paths.set(value, path);
+        return value;
+    };
 }
 
 /** Snippets split at their holes, by source (parsed once). */

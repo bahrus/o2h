@@ -22,7 +22,13 @@ builtIns.tree, with `adopt: true` and the same config and data, takes the server
 await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, { from: data, pipes, registry });
 ```
 
-It needs the config and the data on the client (e.g. embedded as JSON). Afterwards everything is live: events and properties are bound, managers are attached and re-render on `ctx.rebind()`, and the `data-pending` marks are removed. If the markup doesn't match the config, Tree rebuilds it instead.
+It needs the config and the data on the client, e.g. embedded by o2h's `embed` option:
+
+```js
+const data = JSON.parse(container.querySelector('script[type="application/json"][data-tree="tree"]').textContent);
+```
+
+ Afterwards everything is live: events and properties are bound, managers are attached and re-render on `ctx.rebind()`, and the `data-pending` marks are removed. If the markup doesn't match the config, Tree rebuilds it instead.
 
 **How it works:**
 1. **The walk:** Tree walks the config and the existing elements together, level by level. It pairs each level's *slots* (its elements, and the `<!--?switch-->` placeholders of switches rendering nothing) with the specs in order. The pairing uses the same functions o2h used to decide what to render: which map keys, which repeat items (by key), and which switch case. Text and whitespace are skipped.
@@ -43,6 +49,7 @@ Details: [assign-gingerly's tree.md, "How the walk pairs spec and markup"](https
 | `snippets` | Static HTML for `{ snippet: 'name' }` specifications, by name: written as is (trimmed), with the `data-hole` elements the spec's `holes` name rendered like elements (needs well-formed hole markup). The same option builtIns.tree takes, which also checks it on the client (see [tree.md, Snippets](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/tree.md#snippets-static-html)). |
 | `managers` | Itemscope manager classes by registered name. With one, a `{ tag, ish: 'name' }` element's subtree renders from the manager's getters. Either way, the element gets `itemscope="name"`, so the client can attach the manager. |
 | `style` | Prepend the default style, which hides pending parts, only when scripts run (so crawlers and no-JS readers see everything): `<style>@media (scripting: enabled) { [data-pending] { visibility: hidden; } }</style>`. Also exported as `PENDING_STYLE`. |
+| `embed` | Append the data the HTML was rendered from, as JSON, right after the tree: `<script type="application/json" data-tree="<markerName>">`, with `<` escaped so the data can't end the element. The client hydrates from it, so the data is always the snapshot the HTML came from. By default, values JSON drops or changes (functions, Dates, Maps and Sets, class instances, NaN, BigInts) are listed in the result's `notSerializable`, with their paths; `embed: { check: false }` skips that check, which costs about 3× a plain `JSON.stringify`. The data goes *after* the content, so it doesn't delay the first paint of what comes before it when the page streams. |
 
 Types: [`types/o2h/types.d.ts`](types/o2h/types.d.ts).
 

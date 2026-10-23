@@ -19,14 +19,17 @@
     try {
       const vm = initialVm(await (await fetch('../demo/data/launch.json')).json());
 
-      // The server's HTML, hydrated: builtIns.tree adopts it instead of rebuilding
-      const { html } = o2h(config, vm, { pipes, managers, snippets });
+      // The server's HTML, with the data embedded (embed: true), hydrated from that embedded copy:
+      // builtIns.tree adopts the markup instead of rebuilding it
+      const { html, notSerializable } = o2h(config, vm, { pipes, managers, snippets, embed: true });
+      if (notSerializable.length) differences.push(`embed: ${JSON.stringify(notSerializable)}`);
       const server = document.createElement('div');
       server.innerHTML = html;
       document.body.append(server);
+      const embedded = JSON.parse(server.querySelector('script[type="application/json"][data-tree="tree"]').textContent);
       const before = [...server.querySelectorAll('*')];
       await assignFromAsync(server, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, {
-        from: vm, pipes, snippets, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
+        from: embedded, pipes, snippets, registry: { itemscopeRegistry: new ItemscopeRegistry(managers) },
       });
       const after = [...server.querySelectorAll('*')];
       if (before.length !== after.length || before.some((el, i) => el !== after[i])) differences.push('adopt: elements were rebuilt instead of adopted');
@@ -39,6 +42,7 @@
       });
       const strip = host => {
         const copy = host.cloneNode(true);
+        copy.querySelector('script[type="application/json"]')?.remove();   // the embedded data
         for (const name of Object.keys(managers)) for (const el of copy.querySelectorAll(`[itemscope="${name}"]`)) el.removeAttribute('itemscope');
         return copy;
       };

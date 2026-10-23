@@ -93,6 +93,38 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(html).toBe('<!--?start name="tree"--><h3>F9</h3><span></span><p>rocket</p><i>x</i><!--?end-->');
   });
 
+  test('embed: the data it rendered from, after the tree, escaped and checked', async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const config = { markerName: 'card', map: { title: ['h2', '?.'] } };
+    const vm = { title: 'Hi </script><!-- <b>', n: 2 };
+    const { html, notSerializable } = o2h(config, vm, { embed: true });
+    expect(html.startsWith('<!--?start name="card"--><h2>Hi &lt;/script&gt;&lt;!-- &lt;b&gt;</h2><!--?end-->')).toBe(true);
+    const script = html.slice(html.indexOf('<!--?end-->') + '<!--?end-->'.length);
+    expect(script).toBe('<script type="application/json" data-tree="card">{"title":"Hi \\u003c/script>\\u003c!-- \\u003cb>","n":2}</script>');
+    expect(JSON.parse(script.slice(script.indexOf('>') + 1, -'</script>'.length))).toEqual(vm);
+    expect(notSerializable).toEqual([]);
+    expect(o2h(config, vm).html.includes('<script')).toBe(false);   // opt-in
+
+    // The check: what JSON drops or changes, by path
+    class Point { constructor(public x = 1) {} get len() { return this.x; } }
+    const odd = {
+      title: 'T', when: new Date(0), tags: new Set(['a']), fn: () => 1, nested: { big: 10n, list: [1, NaN, new Point()] },
+    };
+    const checked = o2h(config, odd, { embed: true }).notSerializable;
+    expect(checked).toEqual([
+      { path: '?.when', kind: 'a Date (becomes an ISO string)' },
+      { path: '?.tags', kind: 'a Set (becomes {})' },
+      { path: '?.fn', kind: 'a function (dropped)' },
+      { path: '?.nested?.big', kind: 'a bigint (dropped)' },
+      { path: '?.nested?.list?.1', kind: 'NaN (becomes null)' },
+      { path: '?.nested?.list?.2', kind: 'a Point instance (its prototype and getters are lost)' },
+    ]);
+    // Without the check: no report, and a BigInt fails with an explanation
+    const { title: _t, nested: _n, ...noBigInt } = odd;
+    expect(o2h(config, { title: 'T', ...noBigInt }, { embed: { check: false } }).notSerializable).toBeUndefined();
+    expect(() => o2h(config, odd, { embed: { check: false } })).toThrow(/o2h embed: .*embed: true/);
+  });
+
   test('renders the demo definition, managers included', async () => {
     const { o2h } = await import(url('o2h.js'));
     const { config, pipes, managers, snippets, initialVm } = await import(url('demo/treeDefinition.js'));

@@ -81,3 +81,78 @@ That's a larger design (module resolution, registries, when it runs), and it sho
 2. **On the client:** `embeddedData()` only, `hydrate()` too, or Tree reading it implicitly?
 3. **Values that don't survive JSON:** report them (in a separate list), or throw?
 4. **Self-hydrating markup:** worth its own document later?
+
+## Bruce's Response I
+
+> 1. **Add the `embed` option to o2h,** as proposed?
+
+Yes
+
+> 2. **On the client:** `embeddedData()` only, `hydrate()` too, or Tree reading it implicitly?
+
+Let's park that for a bit.
+
+>  3. **Values that don't survive JSON:** report them (in a separate list), or throw?
+
+How do you determine what didn't survive?  It sounds a bit expensive?
+
+> 4. **Self-hydrating markup:** worth its own document later?
+
+Good idea, but let's go in baby steps and park, and discuss in a separate document
+
+
+## Claude's Implementation Notes
+
+**The `embed` option is in.** The client helper and self-hydrating markup are parked, as you asked; they're listed at the end.
+
+### Q3: how the check works, and what it costs
+
+**It rides along the `JSON.stringify` that embedding needs anyway,** as a *replacer*: a function JSON.stringify calls for every value it serializes. For each value, it looks at the original, before JSON converts it, and notes, with its `?.` path, anything JSON **drops or changes**:
+- **dropped:** functions, symbols and BigInts (a BigInt would otherwise make `JSON.stringify` throw);
+- **changed:** `NaN` / `Infinity` (become `null`), Dates (ISO strings), Maps and Sets (`{}`), and class instances (their prototype and getters are lost).
+
+**The cost, measured with Node on the benchmark files:**
+
+| Data | Plain `JSON.stringify` | With the check |
+|---|---|---|
+| shoelace.json, ~650 KB | 0.7 ms | 1.8 ms |
+| shoelace-x10.json, 6.3 MB | 6.3 ms | 19.4 ms |
+
+That's about **3×** a plain stringify. It runs on the server, once per render, and it's small next to rendering. So I made it the **default**, since silently embedding a `Date` that comes back as a string is a hard bug to trace. **`embed: { check: false }`** turns it off, for hot paths with data known to be plain JSON. Without the check, a BigInt still fails, with a message pointing to the check.
+
+### What `embed` does
+
+```js
+const { html, unrendered, notSerializable } = o2h(config, data, { embed: true });
+// html: …<!--?end--><script type="application/json" data-tree="tree">{…}</script>
+```
+
+- **The data embedded is `from`:** the exact value the HTML was rendered from, so the client hydrates from the same snapshot.
+- **After the end marker,** outside Tree's region (the walk and later runs never touch it), and **after the content.** The benchmark showed that data embedded before content delays the first paint.
+- **`data-tree="<markerName>"`** pairs it with its tree when a page has several.
+- **`<` escaped as `\u003c`:** no `</script>` or `<!--` in a string can end the element early, and it's still valid JSON. `application/json` scripts never execute, even through `innerHTML`.
+- **`notSerializable`** is `[]` when everything survived, and absent with `check: false` or without `embed`.
+
+### Code and docs
+
+| Where | What |
+|---|---|
+| **`o2h.ts`** | The `embed` handling in `o2h()`; `escapeScriptJson`, `checkingReplacer`, and `stringifyOrExplain` (for the unchecked path) |
+| **`types/o2h/types.d.ts`** (both copies) | `O2HOptions.embed`, `O2HResult.notSerializable`, `O2HNotSerializable` |
+| **README** | An `embed` row in the options table; the hydration section shows reading the embedded data |
+
+### Tests
+
+- **Node** (`tests/o2h.spec.ts`), checking:
+  - the exact output: placement after the end marker, `data-tree`, and escaping of `</script>`, `<!--` and `<`;
+  - that the data parses back equal to the original;
+  - that it's opt-in;
+  - every kind the check reports, with its path;
+  - `check: false`, and the BigInt explanation.
+- **Browser** (`tests/hydration.html`): the hydration test now renders with `embed: true` and **hydrates from the embedded copy** instead of the original object. It passes in Chromium, Firefox and WebKit: every element is reused, the DOM is the same as Tree's own, and the managers are live.
+- **Results:** browser tests 9 passed. Node tests 6 passed, in the scratch copy linked to the new assign-gingerly build; o2h's own `node_modules` still needs the newer assign-gingerly.
+
+### Parked
+
+- **The client helper:** `embeddedData(container, markerName)` and/or `hydrate(...)`. For now, the page reads the script itself (one line, shown in the README).
+- **Self-hydrating markup,** in its own document when you're ready.
