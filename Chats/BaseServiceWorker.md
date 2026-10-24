@@ -276,3 +276,86 @@ Phase I is in. It covers script fetches only: one `X-O2H-Config` header, one Ind
 - **Pipes, protocols and managers** for per-key records: the separate discussion.
 - **A fallback** where the page renders the JSON itself when no worker is active (Phase II).
 - **Navigations,** and NDJSON / streaming.
+
+## Bruce's Response III
+
+I've been thinking about how to move forward with JS references for pipes, managers, etc.
+
+I may come back to this in a few years when import maps are supported in workers (hopefully).  For now, what I'm thinking would be the most realistic path to what I want to accomplish is this:
+
+In the main thread, the user defines the client side config / options objects needed to hydrate (I don't have them memorized).  These include the optional registry, pipes, etc.
+
+1.  The o2o package defines some sort of package / function that takes the objects above, and finds a way to clone them into the X-O2H-Config object without throwing an error.  Of course, that means the functions will be gone.
+2.  If needed, during that clone process in step 1, a list is maintained of what functionality was lost in the course of the cloning.
+3.  Currently, when running in the main thread, o2h marks sections of the html with attribute "data-pending", which requires attention in the hydration process.  I'm thinking that due to step 1 stripping some functionality, the sections of HTML that need client side adjustments to compensate may become larger, and that's perfectly okay.  More work on the client to get fidelity to the intended result, but it's the best we can do.
+
+This is a little vague, but does it make sense?  Can you attach a little more detail to the idea, and see if it is doable?
+
+
+## Claude's Response III
+
+**Yes, it makes sense, and it's doable.** It fits what's already there: `data-pending` exists for "the server couldn't finish this; the client must". Your idea extends it from "HTML can't carry this" to "the worker didn't have the code for this". Below: the three steps in more detail, one gap I found, and what it would take.
+
+### Step 1: a cloneable record, with stand-ins for what can't be cloned
+
+A page-side function, e.g. `prepareO2HRecord(config, options)`, walks both objects and returns `{ record, lost }`:
+- **Plain data is copied** as is: objects, arrays, strings, numbers, booleans and `null`. That covers the tree config itself (including `` tree`…` `` output), `aka`, `markerName`, `snippets` and `style`.
+- **Each function or class is replaced by a small stand-in object,** not just dropped, e.g. `{ $o2hLost: 'function', name: 'longUtc' }`.
+  - **Why a stand-in:** the record keeps its shape. `options.pipes` still has a `longUtc` key, and `options.managers` still has `rocket-manager`. So the worker still knows these things *exist*, even though it can't run them. That's what makes step 3 precise.
+- **Other non-cloneable things** (an `ItemscopeRegistry` instance, a class in an `ish` header) get stand-ins too, with their kind, plus a usable name where there is one (a manager class's static `is`).
+
+It also helps the page: the same function can derive the **key** from a hash of the config, so pages don't have to invent and track GUIDs. The same config always gets the same key, and a changed config gets a new one, so a stale record can't be used by mistake.
+
+### Step 2: the list of what was lost
+
+`lost` would be entries like `{ path: 'options.pipes.longUtc', kind: 'pipe' }` or `{ path: 'options.managers.rocket-manager', kind: 'manager' }`. Uses:
+- **Development:** a console note, e.g. "this config renders less in the worker: pipes `longUtc`, `kmh`; managers `rocket-manager`".
+- **The worker** doesn't need the list, since the stand-ins carry the same information in place.
+
+### Step 3: the worker marks what depends on lost code as pending
+
+This is where the gap is. **Today, a pipe o2h wasn't given is silently treated as an ordinary property name.** `'?.date?.parseDate?.longUtc'` resolves to `undefined`, so the text comes out *empty*, and **the element isn't marked `data-pending`.**
+- With `adopt: true`, the client fixes the text anyway, since it rebinds everything.
+- With `adopt: 'pending'`, it would **stay empty**, since unmarked elements aren't bound.
+
+So step 3 needs o2h to *know* that something depended on lost code:
+- **In the worker, the stand-ins become stubs that throw** a recognizable `LostReference` error: a stand-in pipe or protocol becomes `() => { throw new LostReference('pipe longUtc') }`.
+- **o2h catches it per pattern key,** and treats that key as "not renderable here": it writes nothing for it (no text, no attribute) and marks the element `data-pending`. The rest of the element, and the rest of the page, render normally.
+- **Managers** already work this way: an element with a manager that has no class is marked pending, and its subtree renders from the raw value. In `'pending'` mode, everything inside a mark is rebound, so the manager's getters fill it in on the client.
+
+**The regions do get larger,** as you expected: every element whose pattern uses a lost pipe or protocol becomes pending. They don't get larger than that, though, because it's per element, not per section.
+
+### The harder case: structure that depends on lost code
+
+Sometimes a lost pipe decides **structure**, not just text:
+- a **switch** whose discriminant uses a pipe (`choose('?.status?.normalize', …)`);
+- a **repeat** whose `of` or `key` does.
+
+The worker can't know which case to render or which items to stamp. If it renders nothing, or guesses, the client's `adopt` walk finds a structural mismatch and **rebuilds the whole tree**. That's correct, but it throws away the server rendering for the entire page.
+
+The fix needs a small addition on **both** sides:
+- **o2h** emits a "pending structure" placeholder in that slot: `<!--?switch pending-->` for a switch, or the repeat's container element marked `data-pending` and left empty.
+- **Tree's `adopt`** accepts those placeholders: it renders that one slot fresh on the client, instead of giving up on the whole tree. Everything around it is still adopted.
+
+Without this, Phase II works for text and attributes, but any switch or repeat driven by a lost pipe costs a full client render.
+
+### Is it doable? Yes. The pieces
+
+| Piece | Where | Size |
+|---|---|---|
+| `prepareO2HRecord(config, options)` → `{ key, record, lost }`, stand-ins, cycle-safe walk | o2h `worker/client.ts` | small |
+| Turn stand-ins back into throwing stubs (pipes, protocols); drop lost managers | o2h `worker/core.ts` | small |
+| Per-key catch of `LostReference`: skip the key, mark the element pending | `o2h.ts` (`renderSpec`) | small to medium |
+| "Pending structure" placeholders for switches and repeats | `o2h.ts`, plus Tree's `adopt` in assign-gingerly | medium |
+| Tests: a config with pipes and managers through the worker, hydrated with `adopt: 'pending'`, matching a client-only render | both | medium |
+
+### A complement worth considering: pipes as data
+
+Many pipes are formatting (dates, numbers, units), which is exactly what `Intl` does. A pipe **described as data**, e.g. `{ intl: 'DateTimeFormat', options: { dateStyle: 'long' } }` instead of a function, **survives the clone** and runs in the worker. That's the be-intl idea, on the server side. It wouldn't replace your plan; it would shrink what gets lost in it.
+
+### Questions
+
+1. **Stand-ins rather than dropping** (so the worker knows what existed)?
+2. **A key derived from the config's hash**, or keep the page's own keys (GUIDs)?
+3. **The structural case:** include the "pending structure" placeholders (and the Tree `adopt` change) in Phase II, or accept full client renders for those cases at first?
+4. **Pipes as data:** worth a separate document?
