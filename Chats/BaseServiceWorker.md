@@ -359,3 +359,97 @@ Many pipes are formatting (dates, numbers, units), which is exactly what `Intl` 
 2. **A key derived from the config's hash**, or keep the page's own keys (GUIDs)?
 3. **The structural case:** include the "pending structure" placeholders (and the Tree `adopt` change) in Phase II, or accept full client renders for those cases at first?
 4. **Pipes as data:** worth a separate document?
+
+## Bruce's Response IV
+
+> 1. **Stand-ins rather than dropping** (so the worker knows what existed)?
+
+Good idea.
+
+> 2. **A key derived from the config's hash**, or keep the page's own keys (GUIDs)?
+
+Good idea.
+
+> 3. **The structural case:** include the "pending structure" placeholders (and the Tree `adopt` change) in Phase II, or accept full client renders for those cases at first?
+
+I like the sound of:
+
+The fix needs a small addition on **both** sides:
+- **o2h** emits a "pending structure" placeholder in that slot: `<!--?switch pending-->` for a switch, or the repeat's container element marked `data-pending` and left empty.
+- **Tree's `adopt`** accepts those placeholders: it renders that one slot fresh on the client, instead of giving up on the whole tree. Everything around it is still adopted.
+
+4. **Pipes as data:** worth a separate document?
+
+Yes, please create a TODO item in assign-gingerly.
+
+
+## Claude's Implementation Notes II
+
+Phase II is in, with stand-ins, hash keys and the pending-structure placeholders on both sides. The "pipes as data" TODO is [assign-gingerly/Chats/AssignFrom/TODO/PipesAsData.md](../../assign-gingerly/Chats/AssignFrom/TODO/PipesAsData.md).
+
+### Step 1 and 2: `prepareO2HRecord` (o2h `worker/record.ts`, re-exported from `worker/client.js`)
+
+```js
+const { key, record, lost } = await prepareO2HRecord(config, { pipes, managers, protocols, snippets, aka });
+await storeO2HRecord(key, record);
+```
+
+- **Plain data is copied** (objects, arrays, primitives; Dates and RegExps as is). Code becomes **stand-ins**, `{ $o2hLost: kind, name }`:
+  - `pipe`, `protocol` and `manager` for the entries of those options;
+  - `class` (named by its static `is` when it has one) and `function` elsewhere, e.g. a class in an `ish` header, or a function in a pattern;
+  - `object` for non-plain objects (an `ItemscopeRegistry`, class instances);
+  - `symbol`, and `cycle`.
+- **`lost`** lists each one: `{ path: 'options.pipes.upper', kind: 'pipe', name: 'upper' }`.
+- **`key`** is `o2h-` plus 32 hex digits of the record's SHA-256: the same config gets the same key, and a changed one gets a new key.
+
+### Step 3: the worker leaves what needs lost code to the client
+
+- **`reviveO2HRecord`** (`worker/core.ts`) turns stand-in pipes and protocols into stubs that throw **`LostReference`**, and drops stand-in managers. The worker uses it before calling o2h.
+- **o2h** (`o2h.ts`):
+  - **A pattern key** that throws `LostReference`, or whose value is a stand-in, is skipped, and its element is marked `data-pending`. Other keys and elements render as usual.
+  - **A switch** whose case can't be decided becomes **`<!--?switch pending-->`**.
+  - **A repeat** whose items can't be decided is left **empty, with its container marked `data-pending`**.
+  - **A class used as a manager** (a stand-in, or a real class) now marks its element `data-pending` too, so `adopt: 'pending'` attaches it.
+  - **Exported:** `LostReference`, `isLost`, `LostStandIn`, `SWITCH_PENDING_PLACEHOLDER`.
+- **A pipe isn't called on a nullish value,** on the server or the client alike. So a stub only throws where the real pipe would actually run, and nothing is marked needlessly.
+
+### The Tree side (assign-gingerly `handlers/tree.ts`)
+
+- **A pending switch:** `slotsOf` counts `<!--?switch pending-->` as a slot. `adoptNode` adopts it as a switch with no case yet (and turns it back into a plain `<!--?switch-->`), so the bind renders the case fresh in its place. With `adopt: 'pending'`, its parent is added to what the first run binds.
+- **A pending repeat:** a container with `data-pending` and no children adopts no items, and the bind creates them.
+- **Everything around them is adopted:** no mismatch, and no full rebuild.
+
+### Tests
+
+- **assign-gingerly `tests/tree-adopt.html`:** a new Test 7 runs with both `adopt: true` and `'pending'`, on Tree's own markup with the switch case replaced by `<!--?switch pending-->` and the repeat emptied and marked. It checks:
+  - no mismatch note;
+  - the other elements adopted (same identity);
+  - the case and the items rendered;
+  - the same DOM as Tree's own render.
+
+  35 of 35 pass in each browser.
+- **o2h Node tests:**
+  - `prepareO2HRecord`: the stand-ins of every kind, `lost` with paths, a record that survives `structuredClone`, a stable key, a new key for a changed config, and cycles;
+  - a revived record rendered by o2h: the exact HTML, with a pending `h2`, `<!--?switch pending-->`, an empty pending `ul`, a manager section rendered from the raw value, and the rest normal.
+
+  8 pass, in the scratch copy linked to the new build.
+- **o2h end to end** (`tests/service-worker.html`, through the real service worker, in Chromium, Firefox and WebKit):
+  - a config with real pipes and a manager class is prepared, stored and fetched;
+  - the HTML has the pending parts;
+  - the page hydrates with `adopt: 'pending'` and the real code;
+  - the untouched parts are adopted, not rebuilt;
+  - the result is **the same DOM as a client-only render**, with no marks left.
+- **Full suites:**
+  - **o2h browser tests:** 12 passed, 3 runs out of 3. A first run had one failure that didn't recur.
+  - **assign-gingerly** (scratch copy, three browsers): 175 passed and 10 skipped. One Firefox failure, "list items use pipes" in `tests/pipes.html`, passed in 3 out of 3 reruns. It waits a fixed 50 ms for an asynchronous list (`setTimeout(r, 50)`), the same kind of flake as the earlier ones; a `whenSettled`-style wait would fix it.
+
+### Docs
+
+- **o2h README** ("Service worker"): the example now uses `prepareO2HRecord` and the content key, and hydrates with `adopt: 'pending'`. A new bullet explains stand-ins, `lost`, `LostReference`, and what the client finishes.
+- **assign-gingerly `docs/tree.md`** (hydration): a paragraph on pending structure.
+
+### For you
+
+- **New files:** o2h `worker/record.ts` (and `.js`), and assign-gingerly `Chats/AssignFrom/TODO/PipesAsData.md`.
+- **Rebuilt:** `o2h-sw.js` (`npm run build:worker`). assign-gingerly's `handlers/tree.js` was rebuilt by your watcher.
+- **o2h's own `node_modules`** still has the earlier assign-gingerly, so its Node tests need the new version installed.

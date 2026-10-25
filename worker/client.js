@@ -35,3 +35,4 @@ export function whenO2HWorkerReady(url, options = {}) {
     }
     return promise;
 }
+export { prepareO2HRecord } from './record.js';

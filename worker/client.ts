@@ -39,3 +39,6 @@ export function whenO2HWorkerReady(url: string | URL, options: { scope?: string 
     }
     return promise;
 }
+
+export { prepareO2HRecord } from './record.js';
+export type { O2HLost, PreparedO2HRecord } from './record.js';

@@ -5421,6 +5421,16 @@ init_microJoin();
 init_assignFrom();
 var PENDING_ATTRIBUTE = "data-pending";
 var PENDING_STYLE = `<style>@media (scripting: enabled) { [${PENDING_ATTRIBUTE}] { visibility: hidden; } }</style>`;
+var LostReference = class extends Error {
+  constructor(what) {
+    super(`o2h: ${what} isn't available here`);
+    this.name = "LostReference";
+  }
+};
+var SWITCH_PENDING_PLACEHOLDER = "<!--?switch pending-->";
+function isLost(value2) {
+  return !!value2 && typeof value2 === "object" && typeof value2.$o2hLost === "string";
+}
 var VOID_TAGS = /* @__PURE__ */ new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
 var REFLECTED = {
   className: "class",
@@ -5533,7 +5543,14 @@ function resolveOptions(stack, ctx) {
 function renderSpec(spec, value2, stack, path, ctx, hole) {
   const options = resolveOptions(stack, ctx);
   if (isSwitch(spec)) {
-    const { spec: chosen } = chooseCase(spec, value2, (p, v) => getValue(p, v, options));
+    let chosen;
+    try {
+      ({ spec: chosen } = chooseCase(spec, value2, (p, v) => getValue(p, v, options)));
+    } catch (e) {
+      if (e instanceof LostReference)
+        return { html: SWITCH_PENDING_PLACEHOLDER, elements: 0 };
+      throw e;
+    }
     if (chosen == null)
       return { html: "<!--?switch-->", elements: 0 };
     return renderSpec(chosen, value2, stack, path, ctx);
@@ -5558,6 +5575,7 @@ function renderSpec(spec, value2, stack, path, ctx, hole) {
   if (ish !== void 0) {
     if (typeof ish !== "string") {
       ctx.unrendered.push({ path, key: "ish (a class can't be named in HTML: register it by name)" });
+      pending = true;
     } else {
       attrs.set("itemscope", ish);
       pending = true;
@@ -5590,37 +5608,45 @@ function renderSpec(spec, value2, stack, path, ctx, hole) {
   for (const key of Object.keys(pattern)) {
     const raw = pattern[key];
     const classified = classifyPatternKey(key, raw, ctx.aka);
-    switch (classified.kind) {
-      case "text":
-        setProperty("textContent", resolveRHS(raw, scope, options));
-        break;
-      case "attribute": {
-        const name = classified.name.toLowerCase();
-        const text = attributeText(resolveRHS(raw, scope, options));
-        if (text == null)
-          attrs.delete(name);
-        else
-          attrs.set(name, text);
-        break;
-      }
-      case "property":
-        setProperty(classified.name, resolveRHS(raw, scope, options));
-        break;
-      case "syncOp":
-        if (raw && typeof raw === "object" && "microJoin" in raw) {
-          content = renderMicroJoin(raw, scope, options, attrs);
-        } else {
-          evaluateOther(key, raw, scope, options, setProperty, path, ctx);
+    try {
+      if (isLost(raw))
+        throw new LostReference(`the ${raw.$o2hLost}${raw.name ? ` "${raw.name}"` : ""} in "${key}"`);
+      switch (classified.kind) {
+        case "text":
+          setProperty("textContent", resolveRHS(raw, scope, options));
+          break;
+        case "attribute": {
+          const name = classified.name.toLowerCase();
+          const text = attributeText(resolveRHS(raw, scope, options));
+          if (text == null)
+            attrs.delete(name);
+          else
+            attrs.set(name, text);
+          break;
         }
-        break;
-      case "event":
-        pending = true;
-        break;
-      case "ish":
-        pending = true;
-        break;
-      default:
-        evaluateOther(key, raw, scope, options, setProperty, path, ctx);
+        case "property":
+          setProperty(classified.name, resolveRHS(raw, scope, options));
+          break;
+        case "syncOp":
+          if (raw && typeof raw === "object" && "microJoin" in raw) {
+            content = renderMicroJoin(raw, scope, options, attrs);
+          } else {
+            evaluateOther(key, raw, scope, options, setProperty, path, ctx);
+          }
+          break;
+        case "event":
+          pending = true;
+          break;
+        case "ish":
+          pending = true;
+          break;
+        default:
+          evaluateOther(key, raw, scope, options, setProperty, path, ctx);
+      }
+    } catch (e) {
+      if (!(e instanceof LostReference))
+        throw e;
+      pending = true;
     }
   }
   let inner = "";
@@ -5633,12 +5659,21 @@ function renderSpec(spec, value2, stack, path, ctx, hole) {
   if (repeat) {
     const holderStack = [...stack, scope];
     const itemOptions = resolveOptions(holderStack, ctx);
-    const stamp = repeatItems(repeat, scope, (p, v, forItem) => getValue(p, v, forItem && repeat.of !== void 0 && repeat.of !== "?." ? itemOptions : options));
-    const itemStack = stamp.pushesHolder ? holderStack : stack;
-    for (const item of stamp.items)
-      renderChild(repeat.each, item, itemStack);
-    if (stamp.empty !== void 0)
-      renderChild(stamp.empty, scope, stack);
+    let stamp;
+    try {
+      stamp = repeatItems(repeat, scope, (p, v, forItem) => getValue(p, v, forItem && repeat.of !== void 0 && repeat.of !== "?." ? itemOptions : options));
+    } catch (e) {
+      if (!(e instanceof LostReference))
+        throw e;
+      pending = true;
+    }
+    if (stamp) {
+      const itemStack = stamp.pushesHolder ? holderStack : stack;
+      for (const item of stamp.items)
+        renderChild(repeat.each, item, itemStack);
+      if (stamp.empty !== void 0)
+        renderChild(stamp.empty, scope, stack);
+    }
   } else if (nested) {
     inner += `<!--?start name="${escapeAttr(nested.markerName ?? "tree")}"-->`;
     for (const entry of mapEntries(nested.map, scope, nested.keepNullish)) {
@@ -5685,7 +5720,9 @@ function evaluateOther(key, raw, scope, options, setProperty, path, ctx) {
   const scratch = {};
   try {
     assignFrom(scratch, { [key]: raw }, { ...options, from: scope });
-  } catch {
+  } catch (e) {
+    if (e instanceof LostReference)
+      throw e;
     ctx.unrendered.push({ path, key });
     return;
   }
@@ -5717,6 +5754,9 @@ function renderMicroJoin(config, scope, options, attrs) {
   return html;
 }
 
+// worker/record.js
+var CODE_MAPS = { pipes: "pipe", protocols: "protocol", managers: "manager" };
+
 // worker/core.js
 var O2H_HEADER = "X-O2H-Config";
 var O2H_ERROR_HEADER = "X-O2H-Error";
@@ -5741,8 +5781,8 @@ async function handleO2HRequest(request, lookup, fetchUpstream = fetch) {
   let html;
   try {
     const data = await upstream.clone().json();
-    const { options = {} } = record;
-    html = o2h(record.config, data, { ...options, embed: options.embed || true }).html;
+    const { config, options } = reviveO2HRecord(record);
+    html = o2h(config, data, { ...options, embed: options.embed || true }).html;
   } catch (e) {
     return withError(upstream, `rendering failed (${e.message})`);
   }
@@ -5762,6 +5802,25 @@ function withError(upstream, message) {
   headers.append("Vary", O2H_HEADER);
   headers.set(O2H_ERROR_HEADER, message.replace(/[^\x20-\x7e]/g, "?").slice(0, 300));
   return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
+}
+function reviveO2HRecord(record) {
+  const options = { ...record.options };
+  for (const [key, kind] of Object.entries(CODE_MAPS)) {
+    const map = options[key];
+    if (!map || typeof map !== "object")
+      continue;
+    const revived = {};
+    for (const [name, entry] of Object.entries(map)) {
+      if (!isLost(entry))
+        revived[name] = entry;
+      else if (kind !== "manager")
+        revived[name] = () => {
+          throw new LostReference(`the ${kind} "${name}"`);
+        };
+    }
+    options[key] = revived;
+  }
+  return { config: record.config, options };
 }
 
 // worker/store.js

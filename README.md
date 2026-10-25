@@ -44,22 +44,29 @@ Details: [assign-gingerly's tree.md, "How the walk pairs spec and markup"](https
 A service worker can render a page's JSON fetches with o2h, off the main thread: the page gets HTML, with the JSON embedded after it, and hydrates.
 
 ```js
-import { whenO2HWorkerReady, storeO2HRecord, O2H_HEADER } from 'o2h/worker/client.js';
+import { whenO2HWorkerReady, prepareO2HRecord, storeO2HRecord, O2H_HEADER } from 'o2h/worker/client.js';
 
 await whenO2HWorkerReady('/o2h-sw.js');                          // registered as a module; resolves once it controls the page
-await storeO2HRecord('launch-card', { config, options: {} });    // what the key names: o2h's config and options (JSON only)
+const { key, record, lost } = await prepareO2HRecord(config, { pipes, managers });   // the client-side config and options
+await storeO2HRecord(key, record);                               // key: a hash of the content
 
-const response = await fetch('/api/launch', { headers: { [O2H_HEADER]: 'launch-card' } });
+const response = await fetch('/api/launch', { headers: { [O2H_HEADER]: key } });
 container.innerHTML = await response.text();                     // HTML, then <script type="application/json" data-tree="tree">
 const data = JSON.parse(container.querySelector('script[data-tree="tree"]').textContent);
-await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: true, ...config } }, { from: data });
+await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } }, { from: data, pipes, registry });
 ```
 
 - **Marked requests only:** the worker handles fetches with an `X-O2H-Config` header, and lets everything else through. It forwards the request **without** that header, so a cross-origin API never sees it and no CORS preflight is caused by it.
 - **The record** (`{ config, options }`, in IndexedDB) is keyed by the header's value, so one worker serves very different API calls. The page writes records; the worker only reads them.
 - **The response:** `o2h(config, json, { ...options, embed: true })` as `text/html; charset=utf-8`, with `Vary: X-O2H-Config`.
 - **Falling back:** when the API's response isn't OK, or isn't JSON, it's returned as is. When the record is missing or rendering fails, the original JSON is returned, with an `X-O2H-Error` header saying why.
-- **Functions:** records are stored in IndexedDB, so they can't hold functions: no pipes, protocols or manager classes yet. A manager named in the config renders from the raw value, and hydration attaches it on the client.
+- **Code the worker can't have:** records live in IndexedDB, which can't hold functions or classes. `prepareO2HRecord(config, options)` copies the client-side config and options, replacing each pipe, protocol, manager class or other piece of code with a **stand-in** (`{ $o2hLost, name }`), and returns what was `lost` (with paths) and a `key` derived from the content. In the worker, stand-in pipes and protocols throw a `LostReference` when used, so o2h leaves exactly what needs them to the client:
+  - a pattern key that needs one isn't rendered, and its element is marked `data-pending`;
+  - a switch whose case needs one becomes `<!--?switch pending-->`;
+  - a repeat whose items need one is left empty, its container marked `data-pending`;
+  - a manager whose class is lost renders from the raw value, marked `data-pending`.
+
+  The page then hydrates with the real code, with `adopt: 'pending'` (or `true`): builtIns.tree adopts everything else, binds the pending parts, and renders the pending switches and repeats fresh. The result is the same DOM as a client-only render; more of it is just finished on the client.
 - **The worker file:** workers can't use import maps, so `o2h-sw.js` is a bundle, built from `worker/serviceWorker.ts` with `npm run build:worker` (esbuild). Serve it from a path whose scope covers your pages, e.g. the site root.
 - **Shared with other workers:** `worker/core.js` (`handleO2HRequest(request, lookup)`) is only the Fetch API and o2h, so a Cloudflare Worker can use it with its own lookup (planned).
 

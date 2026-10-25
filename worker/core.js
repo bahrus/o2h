@@ -11,7 +11,8 @@
  *   so the page can fall back to rendering it itself.
  * - Otherwise: o2h(config, json, { ...options, embed }) as text/html, with `Vary: X-O2H-Config`.
  */
-import { o2h } from '../o2h.js';
+import { isLost, LostReference, o2h } from '../o2h.js';
+import { CODE_MAPS } from './record.js';
 /** The request header naming the record (config and options) to render a JSON response with. */
 export const O2H_HEADER = 'X-O2H-Config';
 /** The response header explaining why a marked request came back as JSON. */
@@ -40,8 +41,8 @@ export async function handleO2HRequest(request, lookup, fetchUpstream = fetch) {
     let html;
     try {
         const data = await upstream.clone().json();
-        const { options = {} } = record;
-        html = o2h(record.config, data, { ...options, embed: options.embed || true }).html;
+        const { config, options } = reviveO2HRecord(record);
+        html = o2h(config, data, { ...options, embed: options.embed || true }).html;
     }
     catch (e) {
         return withError(upstream, `rendering failed (${e.message})`);
@@ -65,4 +66,27 @@ function withError(upstream, message) {
     // Header values must be Latin-1, and short
     headers.set(O2H_ERROR_HEADER, message.replace(/[^\x20-\x7e]/g, '?').slice(0, 300));
     return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
+}
+/**
+ * The config and options to render a record with, in a worker: stand-in pipes and protocols become stubs
+ * that throw LostReference (so o2h leaves what uses them to the client); stand-in managers are left out (o2h
+ * then renders their subtree from the raw value, marked pending). Stand-ins elsewhere stay, and o2h treats
+ * them as lost too.
+ */
+export function reviveO2HRecord(record) {
+    const options = { ...record.options };
+    for (const [key, kind] of Object.entries(CODE_MAPS)) {
+        const map = options[key];
+        if (!map || typeof map !== 'object')
+            continue;
+        const revived = {};
+        for (const [name, entry] of Object.entries(map)) {
+            if (!isLost(entry))
+                revived[name] = entry;
+            else if (kind !== 'manager')
+                revived[name] = () => { throw new LostReference(`the ${kind} "${name}"`); };
+        }
+        options[key] = revived;
+    }
+    return { config: record.config, options };
 }

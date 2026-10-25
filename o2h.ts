@@ -29,6 +29,37 @@ export const PENDING_ATTRIBUTE = 'data-pending' as const;
 /** The opt-in default style (options.style): pending parts hidden, only when scripts run. */
 export const PENDING_STYLE = `<style>@media (scripting: enabled) { [${PENDING_ATTRIBUTE}] { visibility: hidden; } }</style>`;
 
+/**
+ * Thrown by a stand-in for code o2h doesn't have (e.g. a pipe the page defined, which couldn't be stored for a
+ * worker: see worker/record.ts). o2h catches it and leaves that part to the client: a pattern key isn't rendered
+ * (its element is marked data-pending), a switch it decides becomes `<!--?switch pending-->`, and a repeat whose
+ * items it decides is left empty (its container marked data-pending). builtIns.tree's `adopt` renders those parts
+ * fresh on the client, and adopts the rest.
+ */
+export class LostReference extends Error {
+    constructor(what: string) {
+        super(`o2h: ${what} isn't available here`);
+        this.name = 'LostReference';
+    }
+}
+
+/** The placeholder of a switch o2h couldn't decide (see LostReference): builtIns.tree's adopt renders the case fresh. */
+export const SWITCH_PENDING_PLACEHOLDER = '<!--?switch pending-->';
+
+/**
+ * A stand-in for code that couldn't be stored (a function, a class, a non-plain object): what it was, and its
+ * name if it had one. See worker/record.ts. Where o2h meets one as a pattern value, the key is left to the client.
+ */
+export interface LostStandIn {
+    $o2hLost: 'pipe' | 'protocol' | 'manager' | 'function' | 'class' | 'object' | 'symbol' | 'cycle';
+    name?: string;
+}
+
+/** Whether a value is a stand-in for lost code. */
+export function isLost(value: unknown): value is LostStandIn {
+    return !!value && typeof value === 'object' && typeof (value as any).$o2hLost === 'string';
+}
+
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 
 /** Properties that have an HTML attribute (the rest mark the element pending). `true`: a boolean attribute of the same name, lowercased. */
@@ -177,7 +208,14 @@ function resolveOptions(stack: any[], ctx: Context): ResolveOptions {
 function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: number[], ctx: Context, hole?: SnippetHolePart): Rendered {
     const options = resolveOptions(stack, ctx);
     if (isSwitch(spec)) {
-        const { spec: chosen } = chooseCase(spec, value, (p, v) => getValue(p, v, options as any));
+        let chosen;
+        try {
+            ({ spec: chosen } = chooseCase(spec, value, (p, v) => getValue(p, v, options as any)));
+        } catch (e) {
+            // The case depends on code o2h doesn't have: the client picks and renders it
+            if (e instanceof LostReference) return { html: SWITCH_PENDING_PLACEHOLDER, elements: 0 };
+            throw e;
+        }
         // builtIns.tree keeps the slot with a placeholder comment
         if (chosen == null) return { html: '<!--?switch-->', elements: 0 };
         return renderSpec(chosen, value, stack, path, ctx);
@@ -210,7 +248,9 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
     let scope = value;
     if (ish !== undefined) {
         if (typeof ish !== 'string') {
+            // A class (or a stand-in for one): no name for HTML, but the client attaches it
             ctx.unrendered.push({ path, key: 'ish (a class can\'t be named in HTML: register it by name)' });
+            pending = true;
         } else {
             attrs.set('itemscope', ish);
             pending = true;
@@ -238,34 +278,41 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
     for (const key of Object.keys(pattern)) {
         const raw = pattern[key];
         const classified = classifyPatternKey(key, raw, ctx.aka);
-        switch (classified.kind) {
-            case 'text':
-                setProperty('textContent', resolveRHS(raw, scope, options));
-                break;
-            case 'attribute': {
-                const name = classified.name.toLowerCase();
-                const text = attributeText(resolveRHS(raw, scope, options));
-                if (text == null) attrs.delete(name); else attrs.set(name, text);
-                break;
-            }
-            case 'property':
-                setProperty(classified.name, resolveRHS(raw, scope, options));
-                break;
-            case 'syncOp':
-                if (raw && typeof raw === 'object' && 'microJoin' in raw) {
-                    content = renderMicroJoin(raw, scope, options, attrs);
-                } else {
-                    evaluateOther(key, raw, scope, options, setProperty, path, ctx);   // join, …
+        try {
+            if (isLost(raw)) throw new LostReference(`the ${raw.$o2hLost}${raw.name ? ` "${raw.name}"` : ''} in "${key}"`);
+            switch (classified.kind) {
+                case 'text':
+                    setProperty('textContent', resolveRHS(raw, scope, options));
+                    break;
+                case 'attribute': {
+                    const name = classified.name.toLowerCase();
+                    const text = attributeText(resolveRHS(raw, scope, options));
+                    if (text == null) attrs.delete(name); else attrs.set(name, text);
+                    break;
                 }
-                break;
-            case 'event':
-                pending = true;   // the client binds it
-                break;
-            case 'ish':
-                pending = true;
-                break;
-            default:
-                evaluateOther(key, raw, scope, options, setProperty, path, ctx);
+                case 'property':
+                    setProperty(classified.name, resolveRHS(raw, scope, options));
+                    break;
+                case 'syncOp':
+                    if (raw && typeof raw === 'object' && 'microJoin' in raw) {
+                        content = renderMicroJoin(raw, scope, options, attrs);
+                    } else {
+                        evaluateOther(key, raw, scope, options, setProperty, path, ctx);   // join, …
+                    }
+                    break;
+                case 'event':
+                    pending = true;   // the client binds it
+                    break;
+                case 'ish':
+                    pending = true;
+                    break;
+                default:
+                    evaluateOther(key, raw, scope, options, setProperty, path, ctx);
+            }
+        } catch (e) {
+            // The key depends on code o2h doesn't have: left to the client
+            if (!(e instanceof LostReference)) throw e;
+            pending = true;
         }
     }
 
@@ -280,11 +327,20 @@ function renderSpec(spec: ElementSpecification, value: any, stack: any[], path: 
     if (repeat) {
         const holderStack = [...stack, scope];
         const itemOptions = resolveOptions(holderStack, ctx);
-        const stamp = repeatItems(repeat, scope, (p, v, forItem) =>
-            getValue(p, v, (forItem && repeat.of !== undefined && repeat.of !== '?.' ? itemOptions : options) as any));
-        const itemStack = stamp.pushesHolder ? holderStack : stack;
-        for (const item of stamp.items) renderChild(repeat.each, item, itemStack);
-        if (stamp.empty !== undefined) renderChild(stamp.empty, scope, stack);
+        let stamp;
+        try {
+            stamp = repeatItems(repeat, scope, (p, v, forItem) =>
+                getValue(p, v, (forItem && repeat.of !== undefined && repeat.of !== '?.' ? itemOptions : options) as any));
+        } catch (e) {
+            // Which items depends on code o2h doesn't have: the container is left empty, marked, for the client to fill
+            if (!(e instanceof LostReference)) throw e;
+            pending = true;
+        }
+        if (stamp) {
+            const itemStack = stamp.pushesHolder ? holderStack : stack;
+            for (const item of stamp.items) renderChild(repeat.each, item, itemStack);
+            if (stamp.empty !== undefined) renderChild(stamp.empty, scope, stack);
+        }
     } else if (nested) {
         inner += `<!--?start name="${escapeAttr(nested.markerName ?? 'tree')}"-->`;
         for (const entry of mapEntries(nested.map, scope, nested.keepNullish)) {
@@ -342,7 +398,8 @@ function evaluateOther(
     const scratch: Record<string, any> = {};
     try {
         assignFrom(scratch, { [key]: raw }, { ...options, from: scope } as any);
-    } catch {
+    } catch (e) {
+        if (e instanceof LostReference) throw e;   // left to the client (renderSpec marks the element)
         ctx.unrendered.push({ path, key });
         return;
     }

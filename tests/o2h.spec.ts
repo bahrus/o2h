@@ -125,6 +125,76 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(() => o2h(config, odd, { embed: { check: false } })).toThrow(/o2h embed: .*embed: true/);
   });
 
+  test('prepareO2HRecord: a storable record, stand-ins for code, what was lost, a content key', async () => {
+    const { prepareO2HRecord } = await import(url('worker/record.js'));
+    class RocketManager { static is = 'rocket-manager'; }
+    class Helper {}
+    const config = {
+      map: {
+        name: ['h2', '?.upper'],
+        rocket: [{ tag: 'section', ish: RocketManager }, { onTouch: () => 1 }],
+      },
+    };
+    const options = {
+      pipes: { upper: (s: string) => s.toUpperCase() },
+      managers: { 'rocket-manager': RocketManager },
+      protocols: { env: (k: string) => k },
+      snippets: { logo: '<b>L</b>' },
+      aka: { _: 'textContent' },
+      registry: new Helper(),
+    };
+    const { key, record, lost } = await prepareO2HRecord(config, options);
+    expect(() => structuredClone(record)).not.toThrow();
+    expect(record.config.map.name).toEqual(['h2', '?.upper']);
+    expect(record.config.map.rocket[0].ish).toEqual({ $o2hLost: 'class', name: 'rocket-manager' });
+    expect(record.options.pipes).toEqual({ upper: { $o2hLost: 'pipe', name: 'upper' } });
+    expect(record.options.managers).toEqual({ 'rocket-manager': { $o2hLost: 'manager', name: 'rocket-manager' } });
+    expect(record.options.snippets).toEqual({ logo: '<b>L</b>' });
+    expect(record.options.registry).toEqual({ $o2hLost: 'object', name: 'Helper' });
+    expect(lost.map((l: any) => `${l.path}:${l.kind}`)).toEqual([
+      'config.map.rocket.0.ish:class', 'config.map.rocket.1.onTouch:function',
+      'options.pipes.upper:pipe', 'options.managers.rocket-manager:manager', 'options.protocols.env:protocol', 'options.registry:object',
+    ]);
+    // The key follows the content
+    expect(key).toMatch(/^o2h-[0-9a-f]{32}$/);
+    expect((await prepareO2HRecord(config, options)).key).toBe(key);
+    expect((await prepareO2HRecord({ map: { name: ['h3', '?.upper'] } }, options)).key).not.toBe(key);
+    // Cycles become stand-ins too
+    const cyclic: any = { map: {} };
+    cyclic.map.self = cyclic;
+    expect((await prepareO2HRecord(cyclic)).lost).toEqual([{ path: 'config.map.self', kind: 'cycle' }]);
+  });
+
+  test('a revived record: what needs lost code is left to the client (pending, pending structure)', async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const { prepareO2HRecord } = await import(url('worker/record.js'));
+    const { reviveO2HRecord } = await import(url('worker/core.js'));
+    const config = {
+      map: {
+        name: ['h2', '?.upper'],
+        'crew /* size */': { switch: '?.kind', cases: { many: ['p', 'Many'], one: ['p', 'One'] } },
+        'crew /* list */': ['ul', {}, { each: ['li', '?.name'], of: '?.active', key: '?.id' }],
+        rocket: [{ tag: 'section', ish: 'rocket-manager' }, {}, [['b', '?.label']]],
+        note: ['p', '?.'],
+      },
+    };
+    const options = {
+      pipes: { upper: (s: string) => s.toUpperCase(), kind: (c: any[]) => (c.length > 1 ? 'many' : 'one'), active: (c: any[]) => c },
+      managers: { 'rocket-manager': class { get label() { return 'L'; } } },
+    };
+    const { record } = await prepareO2HRecord(config, options);
+    const revived = reviveO2HRecord(structuredClone(record));
+    const vm = { name: 'Demo', crew: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }], rocket: { name: 'F9' }, note: 'N' };
+    const { html } = o2h(revived.config, vm, revived.options);
+    expect(html).toBe('<!--?start name="tree"-->'
+      + '<h2 data-pending></h2>'                                  // a lost pipe: no text, marked
+      + '<!--?switch pending-->'                                   // a lost pipe decides the case
+      + '<ul data-pending></ul>'                                   // … or the items
+      + '<section itemscope="rocket-manager" data-pending><b></b></section>'   // a lost manager: raw value, marked
+      + '<p>N</p>'                                                 // the rest renders as usual
+      + '<!--?end-->');
+  });
+
   test('renders the demo definition, managers included', async () => {
     const { o2h } = await import(url('o2h.js'));
     const { config, pipes, managers, snippets, initialVm } = await import(url('demo/treeDefinition.js'));
