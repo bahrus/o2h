@@ -110,3 +110,84 @@ I haven't looked at o2h-cw's code, so there may be pieces worth porting, such as
 2. **Fetch first, navigations later,** for "submit to the worker"?
 3. **Security and keys:** an allowlist per record, and API keys held as worker secrets. Agreed in principle?
 4. **Start with step 2 by hand** (a hand-written APOD page) before automating it?
+
+## Bruce's Response
+
+> 1. **Security of a public worker.**
+
+So I'm thinking that allowlist could be tied to the domain.
+
+The default domain that cloudflare provides, used really as a kind of sandbox demo site, could allow all API origins proxy passthrough. Would things like rate limits be configured in code or via the cloudflare admin? 
+
+If the API ever became serious enough to use in production settings, a lookup between domain name and allowed list makes sense.  It would be nice to provide that option.
+
+> 2. **API keys.**
+
+I think the sample form that the claude artifact provides should ask for such things.  I suppose caching would be nice.  
+
+Do you think this package should double as a cloudflare worker project, or should it be independent?
+
+Assuming independent...
+
+It's been years since I created a cloudflare worker, and much has changed.  Do you recommend just starting from a blank git repo called o2h-edge, and publishing it, or should I log into cloudflare dashboard and create a new site, or some other approach? 
+
+
+## Claude's Response II
+
+### 1. An allowlist tied to the domain
+
+**That works well,** and the mechanism is the same in both cases:
+- **The worker looks up the request's hostname** in a small table: a KV entry, or the worker's own config to start with. The table gives that hostname's allowed API origins.
+- **The default `*.workers.dev` hostname** maps to `*`: the sandbox, where any API origin passes.
+- **A custom domain** used in production gets its own list.
+
+So adding a production domain is a data change, not a code change.
+
+**Even the sandbox should keep a few guards,** because an open passthrough on your account can be abused by anyone who finds it. Its traffic is counted against your account, and any abuse is traced to it. Cheap guards that don't get in a demo's way:
+- **JSON only:** o2h renders JSON, so the worker should **refuse to pass anything else through**. Not HTML, not images, not binary. That alone makes it useless as a general-purpose proxy.
+- **GET only,** a **size cap** on API responses (a few MB), and a **timeout**.
+- **No forwarding of the caller's cookies** or other credentials, only the parameters the form defines.
+- **A per-IP rate limit** (below), and a **switch** (an environment variable) that turns the sandbox off.
+
+**Rate limits, in code or in the dashboard?** Both exist, for different hostnames (as of my knowledge; worth checking against Cloudflare's current docs):
+- **In code:** Workers have a **Rate Limiting binding**, declared in the worker's config and called from the code (`env.LIMITER.limit({ key: ip })`). It works on `*.workers.dev`, so it's what the sandbox needs.
+- **In the dashboard:** **WAF rate-limiting rules** apply to a **custom domain** (a zone you've added to Cloudflare), with no code. Good for production domains, but they don't cover `workers.dev`.
+
+I'd put a modest per-IP limit in code for everyone, and let production domains add dashboard rules on top if they want.
+
+### 2. API keys
+
+**The form asking for the key is right** for this kind of tool: the person using the page supplies their own key. A few things to get right:
+- **"Caching":** remember the key **in the person's browser** (`localStorage`, per API origin), so they don't retype it. It should **never** be stored by the worker, or put in a generated page that might be shared.
+- **In transit:** the key goes from the browser to the worker to the API. The worker shouldn't log it.
+- **Caching responses** is a separate question, with one trap. Many APIs take the key as a query parameter (NASA's `api_key`), so a cached response is keyed by a URL containing the key. If the worker caches responses (Cloudflare's Cache API), it should **leave the key out of the cache key**, and do this **only for public data** (one person's cached response could be served to another). I'd make response caching opt-in per record, off by default.
+
+### 3. Part of o2h, or independent?
+
+**Independent: a separate `o2h-edge` repo that depends on o2h.**
+- **Different lifecycles:** o2h is a library, published to npm and used anywhere. `o2h-edge` is a *deployment*, with a worker config, KV namespaces, secrets, a domain table, and deploys.
+- **Account-specific configuration doesn't belong in a library** people install.
+- **The shared code already lives where it should:** `o2h/worker/core.js`. `o2h-edge` imports it, plus the Cloudflare-specific parts (KV lookup, allowlist, rate limit, the streamed page shell). It stays small.
+- **For local development in the workspace,** `o2h-edge` can depend on the siblings with `"o2h": "file:../o2h"`, as the workspace does for pages. For deploying, it uses the published versions. That means publishing assign-gingerly (with `pipes/`) and o2h (with `worker/`) first.
+
+### 4. How to start a Cloudflare Worker today
+
+**Start from the command line, in a new repo, and use the dashboard only for account-level things.** That's how it's mostly done now (again, as of my knowledge):
+
+1. **Scaffold:** `npm create cloudflare@latest o2h-edge` (Cloudflare's "C3" tool). Choose the Hello World Worker, with TypeScript, and git. It creates the project: the worker's entry, a **wrangler** config file (`wrangler.jsonc` or `.toml`), and scripts.
+2. **Develop locally:** `npx wrangler dev` runs the worker on your machine, in the same runtime Cloudflare uses (workerd), with local KV.
+3. **Log in and deploy:** `npx wrangler login` once, then `npx wrangler deploy`. It's live at `o2h-edge.<your-subdomain>.workers.dev`, which is the sandbox.
+4. **Resources from the CLI as well:**
+   - `wrangler kv namespace create RECORDS` for the records and domain table;
+   - `wrangler secret put …` for anything secret.
+
+   Both are then declared in the wrangler config.
+5. **Optional, continuous deploys:** connect the GitHub repo to **Workers Builds** in the dashboard, so a push deploys. A custom domain is also added in the dashboard, when you get there.
+
+**Wrangler bundles the worker itself** (with esbuild), resolving `o2h` and `assign-gingerly` from `node_modules`. So the import-map problem we had in the service worker doesn't arise here.
+
+### Questions
+
+1. **The sandbox guards** (JSON only, GET only, size cap and timeout, per-IP rate limit, an off switch): agreed, with everything else open in the sandbox?
+2. **Response caching:** opt-in per record, off by default?
+3. **The repo:** a separate `o2h-edge`, scaffolded with C3. Should I scaffold it in the workspace (`beGingerly/o2h-edge`) when you're ready? I'd stop before `wrangler login` and the first deploy, which need your account.
