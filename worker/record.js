@@ -8,6 +8,8 @@
  * exactly what it can't render and leaves those parts to the client (marked data-pending, or as
  * pending-structure placeholders that builtIns.tree's adopt renders fresh).
  */
+/** Where assign-gingerly's dataPipes keeps a pipe's descriptor (a registered symbol, so no import is needed). */
+const PIPE_DESCRIPTOR = Symbol.for('assign-gingerly.pipeDescriptor');
 /** Option keys whose values are code, by kind. */
 export const CODE_MAPS = { pipes: 'pipe', protocols: 'protocol', managers: 'manager' };
 /**
@@ -32,6 +34,10 @@ function copy(value, path, lost, seen, kindHere) {
     if (type === 'symbol')
         return standIn('symbol', value.description, path, lost);
     if (type === 'function') {
+        // A data pipe (assign-gingerly's dataPipes) carries its descriptor: that's storable, so nothing is lost
+        const descriptor = value[PIPE_DESCRIPTOR];
+        if (descriptor && typeof descriptor === 'object')
+            return copy(descriptor, path, lost, seen);
         const isClass = /^class[\s{]/.test(Function.prototype.toString.call(value));
         const kind = kindHere ?? (isClass ? 'class' : 'function');
         // A manager class is named by its static `is`, when it has one (the name builtIns.tree registers it under)

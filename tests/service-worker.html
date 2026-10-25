@@ -116,6 +116,18 @@
         check(!host.querySelector('[data-pending]'), 'lost code: no marks left');
       }
 
+      // Data pipes (assign-gingerly's dataPipes) survive the trip: the worker renders what uses them
+      {
+        const { dataPipes } = await import('assign-gingerly/pipes/dataPipes.js');
+        const pipes = dataPipes({ shout: { use: 'upper' }, rocketKind: { map: { rocket: 'A rocket' }, default: '?' } });
+        const withData = { map: { name: ['h2', '?.shout'], rocket: ['p', '?.type?.rocketKind'] } };
+        const { key, record, lost } = await prepareO2HRecord(withData, { pipes });
+        check(lost.length === 0, `data pipes: nothing lost (${JSON.stringify(lost)})`);
+        await storeO2HRecord(key, record);
+        const served = await (await fetch('data/mission.json', { headers: { [O2H_HEADER]: key } })).text();
+        check(served.startsWith('<!--?start name="tree"--><h2>DEMO MISSION 7</h2><p>A rocket</p><!--?end-->'), `data pipes: rendered in the worker (${served.slice(0, 120)})`);
+      }
+
       // Marked, but the response isn't JSON: untouched
       const page = await fetch('service-worker.html', { headers: { [O2H_HEADER]: 'mission-card' } });
       check((page.headers.get('Content-Type') ?? '').startsWith('text/html') && (await page.text()).includes('o2h service worker'), 'non-JSON: untouched');

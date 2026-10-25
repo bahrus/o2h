@@ -5754,6 +5754,104 @@ function renderMicroJoin(config, scope, options, attrs) {
   return html;
 }
 
+// ../assign-gingerly/pipes/dataPipes.js
+var PIPE_DESCRIPTOR = /* @__PURE__ */ Symbol.for("assign-gingerly.pipeDescriptor");
+var BUILT_INS = {
+  parseDate: (v) => Date.parse(v),
+  number: (v) => Number(v),
+  string: (v) => String(v),
+  trim: (v) => String(v).trim(),
+  upper: (v) => String(v).toUpperCase(),
+  lower: (v) => String(v).toLowerCase(),
+  length: (v) => v?.length,
+  toFixed: (v, digits) => Number(v).toFixed(digits),
+  slice: (v, start, end) => v?.slice?.(start, end),
+  join: (v, separator) => Array.isArray(v) ? v.join(separator) : v,
+  default: (v, fallback) => v ?? fallback
+};
+var INTL_KINDS = /* @__PURE__ */ new Set(["DateTimeFormat", "NumberFormat", "RelativeTimeFormat", "PluralRules", "ListFormat"]);
+var MAX_CHAIN_DEPTH = 32;
+function dataPipes(entries) {
+  const pipes = {};
+  for (const [name, entry] of Object.entries(entries)) {
+    pipes[name] = typeof entry === "function" ? entry : withDescriptor(fromDescriptor(name, entry, pipes), entry);
+  }
+  for (const [name, entry] of Object.entries(entries)) {
+    if (typeof entry === "function" || !("chain" in entry))
+      continue;
+    for (const link of entry.chain) {
+      if (!Object.hasOwn(pipes, link) && !Object.hasOwn(BUILT_INS, link)) {
+        throw new Error(`dataPipes: "${name}" chains "${link}", which is neither a pipe here nor a built-in`);
+      }
+    }
+  }
+  return pipes;
+}
+function withDescriptor(pipe, descriptor) {
+  Object.defineProperty(pipe, PIPE_DESCRIPTOR, { value: descriptor });
+  return pipe;
+}
+function fromDescriptor(name, d, pipes) {
+  if (d && typeof d === "object") {
+    if ("intl" in d)
+      return intlPipe(name, d);
+    if ("map" in d)
+      return mapPipe(d);
+    if ("use" in d)
+      return usePipe(name, d);
+    if ("chain" in d)
+      return chainPipe(d, pipes);
+  }
+  throw new Error(`dataPipes: "${name}" is neither a function nor a pipe descriptor ({ intl }, { map }, { use } or { chain })`);
+}
+function intlPipe(name, d) {
+  if (!INTL_KINDS.has(d.intl))
+    throw new Error(`dataPipes: "${name}": unknown Intl kind "${d.intl}"`);
+  const formatter = new Intl[d.intl](d.locale, d.options);
+  switch (d.intl) {
+    case "DateTimeFormat":
+      return (v) => formatter.format(typeof v === "string" ? new Date(v) : v);
+    case "RelativeTimeFormat":
+      return (v) => formatter.format(v, d.unit ?? "day");
+    case "PluralRules":
+      return (v) => d.cases?.[formatter.select(v)] ?? d.cases?.other;
+    default:
+      return (v) => formatter.format(v);
+  }
+}
+function mapPipe(d) {
+  return (v) => {
+    const key = String(v);
+    return Object.hasOwn(d.map, key) ? d.map[key] : d.default;
+  };
+}
+function usePipe(name, d) {
+  const builtIn = BUILT_INS[d.use];
+  if (!Object.hasOwn(BUILT_INS, d.use))
+    throw new Error(`dataPipes: "${name}": unknown built-in "${d.use}" (${Object.keys(BUILT_INS).join(", ")})`);
+  const args = d.args ?? [];
+  return (v) => builtIn(v, ...args);
+}
+var chainDepth = 0;
+function chainPipe(d, pipes) {
+  return (v) => {
+    chainDepth++;
+    try {
+      if (chainDepth > MAX_CHAIN_DEPTH)
+        throw new Error(`dataPipes: a chain nests more than ${MAX_CHAIN_DEPTH} deep (does it name itself?)`);
+      let result = v;
+      for (const link of d.chain) {
+        if (result == null)
+          return result;
+        result = Object.hasOwn(pipes, link) ? pipes[link](result) : BUILT_INS[link](result);
+      }
+      return result;
+    } finally {
+      chainDepth--;
+    }
+  };
+}
+
 // worker/record.js
 var CODE_MAPS = { pipes: "pipe", protocols: "protocol", managers: "manager" };
 
@@ -5818,7 +5916,7 @@ function reviveO2HRecord(record) {
           throw new LostReference(`the ${kind} "${name}"`);
         };
     }
-    options[key] = revived;
+    options[key] = key === "pipes" ? dataPipes(revived) : revived;
   }
   return { config: record.config, options };
 }

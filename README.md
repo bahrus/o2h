@@ -66,6 +66,8 @@ await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pendi
   - a repeat whose items need one is left empty, its container marked `data-pending`;
   - a manager whose class is lost renders from the raw value, marked `data-pending`.
 
+  **Data pipes** (assign-gingerly's [`dataPipes`](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data): `Intl` formatters, lookups, built-ins and chains described as data) aren't lost: their descriptors are stored, and the worker runs them.
+
   The page then hydrates with the real code, with `adopt: 'pending'` (or `true`): builtIns.tree adopts everything else, binds the pending parts, and renders the pending switches and repeats fresh. The result is the same DOM as a client-only render; more of it is just finished on the client.
 - **The worker file:** workers can't use import maps, so `o2h-sw.js` is a bundle, built from `worker/serviceWorker.ts` with `npm run build:worker` (esbuild). Serve it from a path whose scope covers your pages, e.g. the site root.
 - **Shared with other workers:** `worker/core.js` (`handleO2HRequest(request, lookup)`) is only the Fetch API and o2h, so a Cloudflare Worker can use it with its own lookup (planned).

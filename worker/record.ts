@@ -28,6 +28,9 @@ export interface PreparedO2HRecord {
     lost: O2HLost[];
 }
 
+/** Where assign-gingerly's dataPipes keeps a pipe's descriptor (a registered symbol, so no import is needed). */
+const PIPE_DESCRIPTOR = Symbol.for('assign-gingerly.pipeDescriptor');
+
 /** Option keys whose values are code, by kind. */
 export const CODE_MAPS = { pipes: 'pipe', protocols: 'protocol', managers: 'manager' } as const;
 
@@ -52,6 +55,9 @@ function copy(value: any, path: string, lost: O2HLost[], seen: WeakSet<object>, 
     if (value === null || (type !== 'object' && type !== 'function' && type !== 'symbol')) return value;
     if (type === 'symbol') return standIn('symbol', value.description, path, lost);
     if (type === 'function') {
+        // A data pipe (assign-gingerly's dataPipes) carries its descriptor: that's storable, so nothing is lost
+        const descriptor = value[PIPE_DESCRIPTOR];
+        if (descriptor && typeof descriptor === 'object') return copy(descriptor, path, lost, seen);
         const isClass = /^class[\s{]/.test(Function.prototype.toString.call(value));
         const kind = kindHere ?? (isClass ? 'class' : 'function');
         // A manager class is named by its static `is`, when it has one (the name builtIns.tree registers it under)

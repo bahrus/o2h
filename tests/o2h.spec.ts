@@ -195,6 +195,26 @@ test.describe('o2h in Node (no DOM)', () => {
       + '<!--?end-->');
   });
 
+  test('data pipes survive prepareO2HRecord, and run in the revived record', async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const { prepareO2HRecord } = await import(url('worker/record.js'));
+    const { reviveO2HRecord } = await import(url('worker/core.js'));
+    const { dataPipes } = await import(url('node_modules/assign-gingerly/pipes/dataPipes.js'));
+    const pipes = dataPipes({
+      shout: { use: 'upper' },
+      phase: { map: { hold: 'On hold' }, default: 'Unknown' },
+      size: (crew: any[]) => crew.length,            // a plain function: lost in a worker
+      label: { chain: ['size', 'string'] },          // a chain through it: left to the client too
+    });
+    const config = { map: { name: ['h2', '?.shout'], status: ['p', '?.phase'], crew: ['b', '?.label'] } };
+    const { record, lost } = await prepareO2HRecord(config, { pipes });
+    expect(lost.map((l: any) => l.path)).toEqual(['options.pipes.size']);
+    expect(record.options.pipes.shout).toEqual({ use: 'upper' });
+    const revived = reviveO2HRecord(structuredClone(record));
+    const { html } = o2h(revived.config, { name: 'Demo', status: 'hold', crew: [1, 2] }, revived.options);
+    expect(html).toBe('<!--?start name="tree"--><h2>DEMO</h2><p>On hold</p><b data-pending></b><!--?end-->');
+  });
+
   test('renders the demo definition, managers included', async () => {
     const { o2h } = await import(url('o2h.js'));
     const { config, pipes, managers, snippets, initialVm } = await import(url('demo/treeDefinition.js'));
