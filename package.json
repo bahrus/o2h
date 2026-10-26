@@ -33,6 +33,10 @@
       "types": "./worker/client.ts",
       "default": "./worker/client.js"
     },
+    "./worker/edge.js": {
+      "types": "./worker/edge.ts",
+      "default": "./worker/edge.js"
+    },
     "./worker/core.js": {
       "types": "./worker/core.ts",
       "default": "./worker/core.js"

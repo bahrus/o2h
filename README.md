@@ -78,7 +78,7 @@ The worker itself:
 - **The response:** `o2h(config, json, { ...options, embed: true })` as `text/html; charset=utf-8`, with `Vary: X-O2H-Transform`.
 - **Falling back:** when the API's response isn't OK, or isn't JSON, it's returned as is. When the transform is missing or rendering fails, the original JSON is returned, with an `X-O2H-Error` header saying why.
 - **The worker file:** workers can't use import maps, so `o2h-sw.js` is a bundle, built from `worker/serviceWorker.ts` with `npm run build:worker` (esbuild). Serve it from a path whose scope covers your pages, e.g. the site root.
-- **Shared with other workers:** `worker/core.js` (`handleO2HRequest(request, lookup)`) uses only the Fetch API and o2h, so a Cloudflare Worker can use it with its own lookup (planned).
+- **Shared with other workers:** `worker/core.js` (`handleO2HRequest(request, lookup)`) uses only the Fetch API and o2h, so a Cloudflare Worker can use it with its own lookup: [o2h-edge](#edge-first-paint-o2h-edge) does.
 
 A config and options with no functions or classes (tree notation, `aka`, `markerName`, `snippets`, `style`, and [data pipes](#data-pipes-survive)) are stored as they are, and the worker renders all of it.
 
@@ -100,6 +100,28 @@ The page then hydrates with the real code, with `adopt: 'pending'` (or `true`). 
 #### Data pipes survive
 
 **Data pipes** (assign-gingerly's [`dataPipes`](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data): `Intl` formatters, lookups, built-ins and chains, described as data) aren't lost. Their descriptors are stored, and the worker runs them. So the more of a config's pipes are data pipes, the more of the page the worker renders.
+
+## Edge first paint: o2h-edge
+
+[o2h-edge](https://github.com/bahrus/o2h-edge) runs the same worker core as a Cloudflare Worker. The page stores a transform there, and asks it to call an API and render the JSON. `renderViaEdge` does that whole round trip:
+
+```js
+import { renderViaEdge } from 'o2h/worker/edge.js';
+
+const options = { pipes, style: true };   // one object: the transform is prepared once per config and options
+const { by, data, elapsed, pending, lost, error } = await renderViaEdge(container, {
+    worker: 'https://o2h-edge.<your-subdomain>.workers.dev',
+    api: 'https://fakestoreapi.com/products',
+    config,
+    options,
+    hydrate: { registry },                 // more assignFrom options for hydrating, if needed
+});
+```
+
+- **Stores the transform** (`prepareO2HTransform`) with the worker, once per worker. If the worker answers that it has no such transform (for example, a restarted `wrangler dev`), it stores it again and retries once.
+- **Renders and hydrates:** the worker's HTML goes into the container, and builtIns.tree hydrates it with `adopt: 'pending'` and the page's real pipes, finishing what the worker left pending (`pending` counts those elements).
+- **Falls back:** when the worker passes the JSON back (`X-O2H-Error`), the page renders it itself, and `by` is `'page'`, with the worker's reason in `error`.
+- **Throws** when the worker can't be reached, refuses the request (its guards, its rate limit), or the API fails.
 
 ## Options
 
