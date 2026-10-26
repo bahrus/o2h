@@ -125,8 +125,8 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(() => o2h(config, odd, { embed: { check: false } })).toThrow(/o2h embed: .*embed: true/);
   });
 
-  test('prepareO2HRecord: a storable record, stand-ins for code, what was lost, a content key', async () => {
-    const { prepareO2HRecord } = await import(url('worker/record.js'));
+  test('prepareO2HTransform: a storable transform, stand-ins for code, what was lost, a content key', async () => {
+    const { prepareO2HTransform } = await import(url('worker/transform.js'));
     class RocketManager { static is = 'rocket-manager'; }
     class Helper {}
     const config = {
@@ -143,32 +143,32 @@ test.describe('o2h in Node (no DOM)', () => {
       aka: { _: 'textContent' },
       registry: new Helper(),
     };
-    const { key, record, lost } = await prepareO2HRecord(config, options);
-    expect(() => structuredClone(record)).not.toThrow();
-    expect(record.config.map.name).toEqual(['h2', '?.upper']);
-    expect(record.config.map.rocket[0].ish).toEqual({ $o2hLost: 'class', name: 'rocket-manager' });
-    expect(record.options.pipes).toEqual({ upper: { $o2hLost: 'pipe', name: 'upper' } });
-    expect(record.options.managers).toEqual({ 'rocket-manager': { $o2hLost: 'manager', name: 'rocket-manager' } });
-    expect(record.options.snippets).toEqual({ logo: '<b>L</b>' });
-    expect(record.options.registry).toEqual({ $o2hLost: 'object', name: 'Helper' });
+    const { key, transform, lost } = await prepareO2HTransform(config, options);
+    expect(() => structuredClone(transform)).not.toThrow();
+    expect(transform.config.map.name).toEqual(['h2', '?.upper']);
+    expect(transform.config.map.rocket[0].ish).toEqual({ $o2hLost: 'class', name: 'rocket-manager' });
+    expect(transform.options.pipes).toEqual({ upper: { $o2hLost: 'pipe', name: 'upper' } });
+    expect(transform.options.managers).toEqual({ 'rocket-manager': { $o2hLost: 'manager', name: 'rocket-manager' } });
+    expect(transform.options.snippets).toEqual({ logo: '<b>L</b>' });
+    expect(transform.options.registry).toEqual({ $o2hLost: 'object', name: 'Helper' });
     expect(lost.map((l: any) => `${l.path}:${l.kind}`)).toEqual([
       'config.map.rocket.0.ish:class', 'config.map.rocket.1.onTouch:function',
       'options.pipes.upper:pipe', 'options.managers.rocket-manager:manager', 'options.protocols.env:protocol', 'options.registry:object',
     ]);
     // The key follows the content
     expect(key).toMatch(/^o2h-[0-9a-f]{32}$/);
-    expect((await prepareO2HRecord(config, options)).key).toBe(key);
-    expect((await prepareO2HRecord({ map: { name: ['h3', '?.upper'] } }, options)).key).not.toBe(key);
+    expect((await prepareO2HTransform(config, options)).key).toBe(key);
+    expect((await prepareO2HTransform({ map: { name: ['h3', '?.upper'] } }, options)).key).not.toBe(key);
     // Cycles become stand-ins too
     const cyclic: any = { map: {} };
     cyclic.map.self = cyclic;
-    expect((await prepareO2HRecord(cyclic)).lost).toEqual([{ path: 'config.map.self', kind: 'cycle' }]);
+    expect((await prepareO2HTransform(cyclic)).lost).toEqual([{ path: 'config.map.self', kind: 'cycle' }]);
   });
 
-  test('a revived record: what needs lost code is left to the client (pending, pending structure)', async () => {
+  test('a revived transform: what needs lost code is left to the client (pending, pending structure)', async () => {
     const { o2h } = await import(url('o2h.js'));
-    const { prepareO2HRecord } = await import(url('worker/record.js'));
-    const { reviveO2HRecord } = await import(url('worker/core.js'));
+    const { prepareO2HTransform } = await import(url('worker/transform.js'));
+    const { reviveO2HTransform } = await import(url('worker/core.js'));
     const config = {
       map: {
         name: ['h2', '?.upper'],
@@ -182,8 +182,8 @@ test.describe('o2h in Node (no DOM)', () => {
       pipes: { upper: (s: string) => s.toUpperCase(), kind: (c: any[]) => (c.length > 1 ? 'many' : 'one'), active: (c: any[]) => c },
       managers: { 'rocket-manager': class { get label() { return 'L'; } } },
     };
-    const { record } = await prepareO2HRecord(config, options);
-    const revived = reviveO2HRecord(structuredClone(record));
+    const { transform } = await prepareO2HTransform(config, options);
+    const revived = reviveO2HTransform(structuredClone(transform));
     const vm = { name: 'Demo', crew: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }], rocket: { name: 'F9' }, note: 'N' };
     const { html } = o2h(revived.config, vm, revived.options);
     expect(html).toBe('<!--?start name="tree"-->'
@@ -195,10 +195,10 @@ test.describe('o2h in Node (no DOM)', () => {
       + '<!--?end-->');
   });
 
-  test('data pipes survive prepareO2HRecord, and run in the revived record', async () => {
+  test('data pipes survive prepareO2HTransform, and run in the revived transform', async () => {
     const { o2h } = await import(url('o2h.js'));
-    const { prepareO2HRecord } = await import(url('worker/record.js'));
-    const { reviveO2HRecord } = await import(url('worker/core.js'));
+    const { prepareO2HTransform } = await import(url('worker/transform.js'));
+    const { reviveO2HTransform } = await import(url('worker/core.js'));
     const { dataPipes } = await import(url('node_modules/assign-gingerly/pipes/dataPipes.js'));
     const pipes = dataPipes({
       shout: { use: 'upper' },
@@ -207,10 +207,10 @@ test.describe('o2h in Node (no DOM)', () => {
       label: { chain: ['size', 'string'] },          // a chain through it: left to the client too
     });
     const config = { map: { name: ['h2', '?.shout'], status: ['p', '?.phase'], crew: ['b', '?.label'] } };
-    const { record, lost } = await prepareO2HRecord(config, { pipes });
+    const { transform, lost } = await prepareO2HTransform(config, { pipes });
     expect(lost.map((l: any) => l.path)).toEqual(['options.pipes.size']);
-    expect(record.options.pipes.shout).toEqual({ use: 'upper' });
-    const revived = reviveO2HRecord(structuredClone(record));
+    expect(transform.options.pipes.shout).toEqual({ use: 'upper' });
+    const revived = reviveO2HTransform(structuredClone(transform));
     const { html } = o2h(revived.config, { name: 'Demo', status: 'hold', crew: [1, 2] }, revived.options);
     expect(html).toBe('<!--?start name="tree"--><h2>DEMO</h2><p>On hold</p><b data-pending></b><!--?end-->');
   });

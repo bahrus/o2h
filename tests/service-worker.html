@@ -9,7 +9,7 @@
   <pre id="differences"></pre>
   <div id="test-complete" style="display:none;" data-status=""></div>
   <script type="module">
-    import { whenO2HWorkerReady, storeO2HRecord, prepareO2HRecord, O2H_HEADER } from '../worker/client.js';
+    import { whenO2HWorkerReady, storeO2HTransform, prepareO2HTransform, O2H_HEADER } from '../worker/client.js';
     import { assignFromAsync, ItemscopeRegistry } from 'assign-gingerly/index.js';
 
     const differences = [];
@@ -20,7 +20,7 @@
       await whenO2HWorkerReady('../o2h-sw.js');
       check(navigator.serviceWorker.controller, 'the worker should control the page');
 
-      // The page stores the record its requests name: JSON-only config and options
+      // The page stores the transform its requests name: JSON-only config and options
       const config = {
         map: {
           name: ['h2', '?.'],
@@ -29,8 +29,8 @@
           note: ['p', '?.'],
         },
       };
-      await storeO2HRecord('mission-card', { config, options: {} });
-      await storeO2HRecord('broken', { config: { map: { name: { snippet: 'missing' } } } });
+      await storeO2HTransform('mission-card', { config, options: {} });
+      await storeO2HTransform('broken', { config: { map: { name: { snippet: 'missing' } } } });
 
       // A marked fetch: HTML, with the JSON embedded after it
       const response = await fetch('data/mission.json', { headers: { [O2H_HEADER]: 'mission-card' } });
@@ -60,9 +60,9 @@
       check((plain.headers.get('Content-Type') ?? '').startsWith('application/json'), `unmarked: Content-Type ${plain.headers.get('Content-Type')}`);
       check((await plain.json()).name === 'Demo Mission 7', 'unmarked: the JSON');
 
-      // No record for the key: the original JSON, with X-O2H-Error
+      // No transform for the key: the original JSON, with X-O2H-Error
       const missing = await fetch('data/mission.json', { headers: { [O2H_HEADER]: 'no-such-key' } });
-      check((missing.headers.get('X-O2H-Error') ?? '').includes('no record for "no-such-key"'), `missing: X-O2H-Error ${missing.headers.get('X-O2H-Error')}`);
+      check((missing.headers.get('X-O2H-Error') ?? '').includes('no transform for "no-such-key"'), `missing: X-O2H-Error ${missing.headers.get('X-O2H-Error')}`);
       check((await missing.json()).name === 'Demo Mission 7', 'missing: the original JSON');
 
       // Rendering fails (a snippet the options don't have): the original JSON, with X-O2H-Error
@@ -70,7 +70,7 @@
       check((broken.headers.get('X-O2H-Error') ?? '').includes('rendering failed'), `broken: X-O2H-Error ${broken.headers.get('X-O2H-Error')}`);
       check((await broken.json()).name === 'Demo Mission 7', 'broken: the original JSON');
 
-      // Code the worker can't have (pipes, a manager class): prepareO2HRecord stores stand-ins; the worker leaves what
+      // Code the worker can't have (pipes, a manager class): prepareO2HTransform stores stand-ins; the worker leaves what
       // needs them to the client (pending, and pending structure); adopt: 'pending' with the real code finishes it
       {
         class RocketManager {
@@ -89,9 +89,9 @@
             note: ['p', '?.'],
           },
         };
-        const { key, record, lost } = await prepareO2HRecord(full, { pipes, managers });
+        const { key, transform, lost } = await prepareO2HTransform(full, { pipes, managers });
         check(lost.length === 4, `lost: ${JSON.stringify(lost)}`);
-        await storeO2HRecord(key, record);
+        await storeO2HTransform(key, transform);
         const served = await (await fetch('data/mission.json', { headers: { [O2H_HEADER]: key } })).text();
         check(served.includes('<h2 data-pending></h2><!--?switch pending--><ul data-pending></ul>'), `lost code: left to the client (${served.slice(0, 160)})`);
 
@@ -121,9 +121,9 @@
         const { dataPipes } = await import('assign-gingerly/pipes/dataPipes.js');
         const pipes = dataPipes({ shout: { use: 'upper' }, rocketKind: { map: { rocket: 'A rocket' }, default: '?' } });
         const withData = { map: { name: ['h2', '?.shout'], rocket: ['p', '?.type?.rocketKind'] } };
-        const { key, record, lost } = await prepareO2HRecord(withData, { pipes });
+        const { key, transform, lost } = await prepareO2HTransform(withData, { pipes });
         check(lost.length === 0, `data pipes: nothing lost (${JSON.stringify(lost)})`);
-        await storeO2HRecord(key, record);
+        await storeO2HTransform(key, transform);
         const served = await (await fetch('data/mission.json', { headers: { [O2H_HEADER]: key } })).text();
         check(served.startsWith('<!--?start name="tree"--><h2>DEMO MISSION 7</h2><p>A rocket</p><!--?end-->'), `data pipes: rendered in the worker (${served.slice(0, 120)})`);
       }

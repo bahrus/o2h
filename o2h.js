@@ -22,7 +22,7 @@ export const PENDING_ATTRIBUTE = 'data-pending';
 export const PENDING_STYLE = `<style>@media (scripting: enabled) { [${PENDING_ATTRIBUTE}] { visibility: hidden; } }</style>`;
 /**
  * Thrown by a stand-in for code o2h doesn't have (e.g. a pipe the page defined, which couldn't be stored for a
- * worker: see worker/record.ts). o2h catches it and leaves that part to the client: a pattern key isn't rendered
+ * worker: see worker/transform.ts). o2h catches it and leaves that part to the client: a pattern key isn't rendered
  * (its element is marked data-pending), a switch it decides becomes `<!--?switch pending-->`, and a repeat whose
  * items it decides is left empty (its container marked data-pending). builtIns.tree's `adopt` renders those parts
  * fresh on the client, and adopts the rest.

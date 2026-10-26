@@ -54,11 +54,11 @@ Details: [assign-gingerly's tree.md, "How the walk pairs spec and markup"](https
 A service worker renders a page's JSON fetches with o2h, off the main thread. The page gets HTML (with the JSON embedded after it), assigns it, and hydrates.
 
 ```js
-import { whenO2HWorkerReady, prepareO2HRecord, storeO2HRecord, O2H_HEADER } from 'o2h/worker/client.js';
+import { whenO2HWorkerReady, prepareO2HTransform, storeO2HTransform, O2H_HEADER } from 'o2h/worker/client.js';
 
 await whenO2HWorkerReady('/o2h-sw.js');                          // registered as a module; resolves once it controls the page
-const { key, record, lost } = await prepareO2HRecord(config, { pipes, managers });   // the client-side config and options
-await storeO2HRecord(key, record);                               // key: a hash of the content
+const { key, transform, lost } = await prepareO2HTransform(config, { pipes, managers });   // the client-side config and options
+await storeO2HTransform(key, transform);                               // key: a hash of the content
 
 const response = await fetch('/api/launch', { headers: { [O2H_HEADER]: key } });
 container.innerHTML = await response.text();                     // HTML, then <script type="application/json" data-tree="tree">
@@ -73,10 +73,10 @@ await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pendi
 ### Data-only configs
 
 The worker itself:
-- **Marked requests only:** the worker handles fetches with an `X-O2H-Config` header, and lets everything else through. It forwards the request **without** that header, so a cross-origin API never sees it, and it causes no CORS preflight.
-- **The record** (`{ config, options }`, in IndexedDB) is keyed by the header's value, so one worker serves very different API calls. The page writes records; the worker only reads them.
-- **The response:** `o2h(config, json, { ...options, embed: true })` as `text/html; charset=utf-8`, with `Vary: X-O2H-Config`.
-- **Falling back:** when the API's response isn't OK, or isn't JSON, it's returned as is. When the record is missing or rendering fails, the original JSON is returned, with an `X-O2H-Error` header saying why.
+- **Marked requests only:** the worker handles fetches with an `X-O2H-Transform` header, and lets everything else through. It forwards the request **without** that header, so a cross-origin API never sees it, and it causes no CORS preflight.
+- **The transform** (`{ config, options }`, in IndexedDB) is keyed by the header's value, so one worker serves very different API calls. The page writes transforms; the worker only reads them.
+- **The response:** `o2h(config, json, { ...options, embed: true })` as `text/html; charset=utf-8`, with `Vary: X-O2H-Transform`.
+- **Falling back:** when the API's response isn't OK, or isn't JSON, it's returned as is. When the transform is missing or rendering fails, the original JSON is returned, with an `X-O2H-Error` header saying why.
 - **The worker file:** workers can't use import maps, so `o2h-sw.js` is a bundle, built from `worker/serviceWorker.ts` with `npm run build:worker` (esbuild). Serve it from a path whose scope covers your pages, e.g. the site root.
 - **Shared with other workers:** `worker/core.js` (`handleO2HRequest(request, lookup)`) uses only the Fetch API and o2h, so a Cloudflare Worker can use it with its own lookup (planned).
 
@@ -84,7 +84,7 @@ A config and options with no functions or classes (tree notation, `aka`, `marker
 
 ### Configs with code: stand-ins and pending parts
 
-Records live in IndexedDB, which can't hold functions or classes. `prepareO2HRecord(config, options)` copies the client-side config and options:
+Transforms live in IndexedDB, which can't hold functions or classes. `prepareO2HTransform(config, options)` copies the client-side config and options:
 - **Stand-ins:** each pipe, protocol, manager class or other piece of code becomes a **stand-in** (`{ $o2hLost, name }`).
 - **What was lost** comes back as `lost`, with paths.
 - **The key** is derived from the content: the same config gets the same key, and a changed one gets a new key.

@@ -1,10 +1,10 @@
 /**
- * Records for o2h's workers, from the configs and options a page uses on the client.
+ * Transforms for o2h's workers, from the configs and options a page uses on the client.
  *
  * The page's objects can hold code (pipes, protocols, manager classes, a registry), which can't be stored
- * in IndexedDB or sent to a worker. prepareO2HRecord copies them, replacing each piece of code with a
- * stand-in (`{ $o2hLost: kind, name }`), lists what was lost, and keys the record by a hash of its content.
- * In the worker, reviveO2HRecord (core.ts) turns the stand-ins into stubs that throw LostReference, so o2h knows
+ * in IndexedDB or sent to a worker. prepareO2HTransform copies them, replacing each piece of code with a
+ * stand-in (`{ $o2hLost: kind, name }`), lists what was lost, and keys the transform by a hash of its content.
+ * In the worker, reviveO2HTransform (core.ts) turns the stand-ins into stubs that throw LostReference, so o2h knows
  * exactly what it can't render and leaves those parts to the client (marked data-pending, or as
  * pending-structure placeholders that builtIns.tree's adopt renders fresh).
  */
@@ -13,18 +13,18 @@ const PIPE_DESCRIPTOR = Symbol.for('assign-gingerly.pipeDescriptor');
 /** Option keys whose values are code, by kind. */
 export const CODE_MAPS = { pipes: 'pipe', protocols: 'protocol', managers: 'manager' };
 /**
- * Copy a client-side config and options into a storable record. Code becomes stand-ins (listed in `lost`),
- * and the key is a hash of the record's content: the same config gets the same key, a changed one a new key.
+ * Copy a client-side config and options into a storable transform. Code becomes stand-ins (listed in `lost`),
+ * and the key is a hash of the transform's content: the same config gets the same key, a changed one a new key.
  */
-export async function prepareO2HRecord(config, options = {}) {
+export async function prepareO2HTransform(config, options = {}) {
     const lost = [];
-    const record = {
+    const transform = {
         config: copy(config, 'config', lost, new WeakSet()),
         options: copy(options, 'options', lost, new WeakSet()),
     };
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(record)));
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(transform)));
     const hex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
-    return { key: `o2h-${hex.slice(0, 32)}`, record, lost };
+    return { key: `o2h-${hex.slice(0, 32)}`, transform, lost };
 }
 /** A storable copy of a value: plain data as is, code as stand-ins. */
 function copy(value, path, lost, seen, kindHere) {

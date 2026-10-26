@@ -1,21 +1,21 @@
 /**
  * The shared core of o2h's workers: turns a JSON API response into HTML (plus the JSON, embedded), for
- * requests marked with an `X-O2H-Config` header. Only the Fetch API and o2h, so the same code can serve
+ * requests marked with an `X-O2H-Transform` header. Only the Fetch API and o2h, so the same code can serve
  * a service worker (worker/serviceWorker.ts) and, later, a Cloudflare Worker; each supplies its own lookup.
  *
  * - Not marked: not handled (callers check isO2HRequest first).
  * - Marked: the request is forwarded without the header (so a cross-origin API never sees it, and no
  *   CORS preflight is caused by it).
  * - The upstream response isn't OK, or isn't JSON: returned as is.
- * - No record for the key, or rendering fails: the original JSON, with an `X-O2H-Error` header saying why,
+ * - No transform for the key, or rendering fails: the original JSON, with an `X-O2H-Error` header saying why,
  *   so the page can fall back to rendering it itself.
- * - Otherwise: o2h(config, json, { ...options, embed }) as text/html, with `Vary: X-O2H-Config`.
+ * - Otherwise: o2h(config, json, { ...options, embed }) as text/html, with `Vary: X-O2H-Transform`.
  */
 import { isLost, LostReference, o2h } from '../o2h.js';
 import { dataPipes } from 'assign-gingerly/pipes/dataPipes.js';
-import { CODE_MAPS } from './record.js';
-/** The request header naming the record (config and options) to render a JSON response with. */
-export const O2H_HEADER = 'X-O2H-Config';
+import { CODE_MAPS } from './transform.js';
+/** The request header naming the transform (config and options) to render a JSON response with. */
+export const O2H_HEADER = 'X-O2H-Transform';
 /** The response header explaining why a marked request came back as JSON. */
 export const O2H_ERROR_HEADER = 'X-O2H-Error';
 /** Whether a request asks for o2h rendering. */
@@ -30,19 +30,19 @@ export async function handleO2HRequest(request, lookup, fetchUpstream = fetch) {
     const upstream = await fetchUpstream(new Request(request, { headers }));
     if (!upstream.ok || !isJson(upstream.headers.get('Content-Type')))
         return upstream;
-    let record;
+    let transform;
     try {
-        record = await lookup(key);
+        transform = await lookup(key);
     }
     catch (e) {
-        return withError(upstream, `the record "${key}" couldn't be read (${e.message})`);
+        return withError(upstream, `the transform "${key}" couldn't be read (${e.message})`);
     }
-    if (!record?.config)
-        return withError(upstream, `no record for "${key}"`);
+    if (!transform?.config)
+        return withError(upstream, `no transform for "${key}"`);
     let html;
     try {
         const data = await upstream.clone().json();
-        const { config, options } = reviveO2HRecord(record);
+        const { config, options } = reviveO2HTransform(transform);
         html = o2h(config, data, { ...options, embed: options.embed || true }).html;
     }
     catch (e) {
@@ -69,14 +69,14 @@ function withError(upstream, message) {
     return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
 }
 /**
- * The config and options to render a record with, in a worker: stand-in pipes and protocols become stubs
+ * The config and options to render a transform with, in a worker: stand-in pipes and protocols become stubs
  * that throw LostReference (so o2h leaves what uses them to the client); stand-in managers are left out (o2h
  * then renders their subtree from the raw value, marked pending). Stored data pipes (descriptors, from
  * assign-gingerly's dataPipes) become pipes again, so they run here; a chain reaching a lost pipe throws
  * through its stub. Stand-ins elsewhere stay, and o2h treats them as lost too.
  */
-export function reviveO2HRecord(record) {
-    const options = { ...record.options };
+export function reviveO2HTransform(transform) {
+    const options = { ...transform.options };
     for (const [key, kind] of Object.entries(CODE_MAPS)) {
         const map = options[key];
         if (!map || typeof map !== 'object')
@@ -91,5 +91,5 @@ export function reviveO2HRecord(record) {
         // Pipes: descriptors become functions again (functions, i.e. the stubs, pass through)
         options[key] = key === 'pipes' ? dataPipes(revived) : revived;
     }
-    return { config: record.config, options };
+    return { config: transform.config, options };
 }

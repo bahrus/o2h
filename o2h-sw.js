@@ -5852,11 +5852,11 @@ function chainPipe(d, pipes) {
   };
 }
 
-// worker/record.js
+// worker/transform.js
 var CODE_MAPS = { pipes: "pipe", protocols: "protocol", managers: "manager" };
 
 // worker/core.js
-var O2H_HEADER = "X-O2H-Config";
+var O2H_HEADER = "X-O2H-Transform";
 var O2H_ERROR_HEADER = "X-O2H-Error";
 function isO2HRequest(request) {
   return request.headers.has(O2H_HEADER);
@@ -5868,18 +5868,18 @@ async function handleO2HRequest(request, lookup, fetchUpstream = fetch) {
   const upstream = await fetchUpstream(new Request(request, { headers }));
   if (!upstream.ok || !isJson(upstream.headers.get("Content-Type")))
     return upstream;
-  let record;
+  let transform;
   try {
-    record = await lookup(key);
+    transform = await lookup(key);
   } catch (e) {
-    return withError(upstream, `the record "${key}" couldn't be read (${e.message})`);
+    return withError(upstream, `the transform "${key}" couldn't be read (${e.message})`);
   }
-  if (!record?.config)
-    return withError(upstream, `no record for "${key}"`);
+  if (!transform?.config)
+    return withError(upstream, `no transform for "${key}"`);
   let html;
   try {
     const data = await upstream.clone().json();
-    const { config, options } = reviveO2HRecord(record);
+    const { config, options } = reviveO2HTransform(transform);
     html = o2h(config, data, { ...options, embed: options.embed || true }).html;
   } catch (e) {
     return withError(upstream, `rendering failed (${e.message})`);
@@ -5901,8 +5901,8 @@ function withError(upstream, message) {
   headers.set(O2H_ERROR_HEADER, message.replace(/[^\x20-\x7e]/g, "?").slice(0, 300));
   return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
 }
-function reviveO2HRecord(record) {
-  const options = { ...record.options };
+function reviveO2HTransform(transform) {
+  const options = { ...transform.options };
   for (const [key, kind] of Object.entries(CODE_MAPS)) {
     const map = options[key];
     if (!map || typeof map !== "object")
@@ -5918,16 +5918,22 @@ function reviveO2HRecord(record) {
     }
     options[key] = key === "pipes" ? dataPipes(revived) : revived;
   }
-  return { config: record.config, options };
+  return { config: transform.config, options };
 }
 
 // worker/store.js
 var DB = "o2h";
-var STORE = "records";
+var STORE = "transforms";
 function open() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+    const request = indexedDB.open(DB, 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (db.objectStoreNames.contains("records"))
+        db.deleteObjectStore("records");
+      if (!db.objectStoreNames.contains(STORE))
+        db.createObjectStore(STORE);
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -5951,7 +5957,7 @@ async function run(mode, use) {
     };
   });
 }
-function getO2HRecord(key) {
+function getO2HTransform(key) {
   return run("readonly", (store) => store.get(key));
 }
 
@@ -5960,5 +5966,5 @@ var sw = self;
 sw.addEventListener("install", (event) => event.waitUntil(sw.skipWaiting()));
 sw.addEventListener("activate", (event) => event.waitUntil(sw.clients.claim()));
 sw.addEventListener("fetch", (event) => {
-  if (isO2HRequest(event.request)) event.respondWith(handleO2HRequest(event.request, getO2HRecord));
+  if (isO2HRequest(event.request)) event.respondWith(handleO2HRequest(event.request, getO2HTransform));
 });

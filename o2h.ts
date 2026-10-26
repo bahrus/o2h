@@ -31,7 +31,7 @@ export const PENDING_STYLE = `<style>@media (scripting: enabled) { [${PENDING_AT
 
 /**
  * Thrown by a stand-in for code o2h doesn't have (e.g. a pipe the page defined, which couldn't be stored for a
- * worker: see worker/record.ts). o2h catches it and leaves that part to the client: a pattern key isn't rendered
+ * worker: see worker/transform.ts). o2h catches it and leaves that part to the client: a pattern key isn't rendered
  * (its element is marked data-pending), a switch it decides becomes `<!--?switch pending-->`, and a repeat whose
  * items it decides is left empty (its container marked data-pending). builtIns.tree's `adopt` renders those parts
  * fresh on the client, and adopts the rest.
@@ -48,7 +48,7 @@ export const SWITCH_PENDING_PLACEHOLDER = '<!--?switch pending-->';
 
 /**
  * A stand-in for code that couldn't be stored (a function, a class, a non-plain object): what it was, and its
- * name if it had one. See worker/record.ts. Where o2h meets one as a pattern value, the key is left to the client.
+ * name if it had one. See worker/transform.ts. Where o2h meets one as a pattern value, the key is left to the client.
  */
 export interface LostStandIn {
     $o2hLost: 'pipe' | 'protocol' | 'manager' | 'function' | 'class' | 'object' | 'symbol' | 'cycle';
