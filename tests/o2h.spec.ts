@@ -215,6 +215,14 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(html).toBe('<!--?start name="tree"--><h2>DEMO</h2><p>On hold</p><b data-pending></b><!--?end-->');
   });
 
+  test('renders { join } attribute values (tree`…` attribute text mixed with values) as one string', async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const { tree } = await import(url('node_modules/assign-gingerly/DX/tree.js'));
+    const config = { map: { '*': tree`<a class="card ${'?.kind'}" href="#product/${'?.id'}">${'?.title'}</a>` } };
+    const { html } = o2h(config, [{ id: 3, kind: 'sale', title: 'Bag' }, { id: 4, title: 'Hat' }]);
+    expect(html).toBe('<!--?start name="tree"--><a class="card sale" href="#product/3">Bag</a><a class="card " href="#product/4">Hat</a><!--?end-->');
+  });
+
   test('renders the demo definition, managers included', async () => {
     const { o2h } = await import(url('o2h.js'));
     const { config, pipes, managers, snippets, initialVm } = await import(url('demo/treeDefinition.js'));
