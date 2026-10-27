@@ -223,6 +223,17 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(html).toBe('<!--?start name="tree"--><a class="card sale" href="#product/3">Bag</a><a class="card " href="#product/4">Hat</a><!--?end-->');
   });
 
+  test("renders path keys: '?.' as the whole VM in one element, '?.a?.b' a nested value", async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const config = { map: {
+      '?.': ['article', {}, [['h2', '?.title'], ['p', '?.rating?.rate']]],
+      '?.congress?.house': ['p', '?.seats'],
+      '?.missing?.path': ['i', '?.'],
+    } };
+    const { html } = o2h(config, { title: 'Bag', rating: { rate: 4.1 }, congress: { house: { seats: 435 } } });
+    expect(html).toBe('<!--?start name="tree"--><article><h2>Bag</h2><p>4.1</p></article><p>435</p><!--?end-->');
+  });
+
   test('renders the demo definition, managers included', async () => {
     const { o2h } = await import(url('o2h.js'));
     const { config, pipes, managers, snippets, initialVm } = await import(url('demo/treeDefinition.js'));
