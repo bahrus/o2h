@@ -233,4 +233,83 @@ Yes, that fits well. Nearly everything is already data:
 2. **The package:** create `navigate-gingerly` as a new sibling repo in the workspace? Or start it inside o2h-edge's demo folder until its shape settles?
 3. **The JSON site:** go JSON-first now (configs in notation, with `{ import, export }` references), or start with a JS module and move to JSON once the shape settles? I'd lean JSON-first, since it forces the declarative shape early, and the store's configs are small enough to write in notation.
 
+## Bruce's Response II
+
+> 1. **Model B first**
+
+Actually, I'd like to dive into Model A first, at least conceptually, then decide which would make more sense to implement first.
+
+I think the only "red flag" with Model A, that goes against the grain of what I'd like to accomplish, has to do with "hardcoding without namespacing" JavaScript into what is supposed to be a totally open, extendable on the fly service.
+
+So for me to get excited about Model A, I would want there to be an "installApp" endpoint, where we could pass the mostly JSON object (which the installApp would carefully replace with stand-ins as needed), calculates a hash, and then instead of opening:
+
+https://o2h-edge…/store/product/3
+
+we would open:
+
+https://o2h-edge…/o2h-app/:hash/store/product/3
+
+Can that work?
+
+## Claude's Thoughts III: Model A, with installed apps
+
+**Yes, it works,** and it fixes the red flag: the edge holds no site of its own. It holds **apps anyone installed**, each addressed by the hash of its content, exactly like transforms. Nobody can change an installed app, only install a new one. And `/o2h-app/<hash>/…` namespaces every app's routes.
+
+### The flow
+
+1. **`PUT /o2h-app/<hash>`** (installApp). The body is the app: mostly JSON, plus `{ import, export }` module references. As with transforms:
+   - the client prepares it (stand-ins for code, then the hash) and the edge checks that the hash matches the content;
+   - it's size-capped (`MAX_APP_BYTES`) and stored in KV.
+   - The edge never runs app code: module references are stand-ins to it.
+2. **`GET /o2h-app/<hash>/store/product/3`:**
+   1. Load the app from KV, cached in memory per isolate, since an app never changes.
+   2. Match `/store/product/3` against its routes.
+   3. Fetch the route's sources in parallel, through the guards.
+   4. Render the tree into the shell.
+   5. Embed the VM and the route, and respond with the whole document.
+3. **In the browser,** the shell's hydration script loads the module references and hydrates (`adopt: 'pending'`). From then on, the Navigation API can intercept links and fetch just the next page's fragment from the same app, so later navigations don't reload the document.
+
+### Things that make it work
+
+- **Links inside an app:** the edge injects `<base href="/o2h-app/<hash>/">` into the shell. Authors write **relative** links (`href="store/product/${'?.id'}"`), and they resolve within the app. A root-relative link (`/store/…`) would escape the app, so the docs (and maybe a check at install) should say so.
+- **Where the JavaScript comes from.** The page is now on the edge's origin. Two kinds of code:
+  - **The hydration runtime** (assign-gingerly, o2h's client code, the navigation package) is **the service's own code**, versioned with the worker. The edge can serve it from Workers Static Assets (`/o2h-runtime/…`), plus an import map in the shell that points there. That's not app code being hardcoded into the service, so it keeps the service open.
+  - **The app's own code** (function pipes, managers): its module references are **absolute URLs** to wherever the app lives: a CDN, or the author's server. Cross-origin module scripts need CORS headers. CDNs send them; spa-ssi doesn't yet, so local development would need that small change.
+- **Versions:** a new hash per change means old links keep working against the old app, an immutable deploy. A shared link never picks up fixes, though. If that matters, a **named alias** (`/o2h-app/@store/…` → the current hash, which only the admin token can change) can come later, without changing the core.
+- **The service worker** can do the same within its scope: install into IndexedDB, then answer navigations to `/o2h-app/<hash>/…`. The core (matching, sources, the shell) is shared.
+
+### The one real concern: every app shares the edge's origin
+
+With Model A, **the edge serves author-supplied HTML and scripts on its own origin.** With open installation, that means:
+- **Apps can read each other's storage.** Every app lives at `https://o2h-edge…`, so app A's script can read app B's `localStorage`, `IndexedDB`, service worker registrations and cookies. Path prefixes don't separate origins.
+- **Anyone can host a page on your domain.** An open `installApp` lets anyone publish arbitrary pages under your workers.dev name: phishing, spam, or scripts you didn't vet.
+
+Transforms didn't raise this: they're data, and the page that used them lived on its own origin. Ways to contain it, from strongest:
+1. **An origin per app:** `https://<hash>.apps.example.com/…`, through a custom domain with a wildcard route. That's real isolation, the way sandboxed-content domains (`*.githubusercontent.com`, `*.usercontent.goog`) do it. workers.dev has no wildcard subdomains, so this needs a custom domain.
+2. **A restrictive Content-Security-Policy** on app pages:
+   - scripts only from the runtime and from origins the app **declares** (and an allowlist may cap that);
+   - no inline scripts except the edge's own, by nonce or hash;
+   - `sandbox` without `allow-same-origin`, which gives each page an opaque origin. That isolates storage, but also takes storage away from apps entirely.
+3. **Who may install:**
+   - open in the sandbox, as transforms are, but labelled as such;
+   - admin token only on custom domains, or everywhere;
+   - or installs open, but apps served only on hosts that allow them (like `DOMAIN_ALLOWLIST`).
+
+**My recommendation:** a CSP that limits scripts to the runtime plus the app's declared origins, from the start. Admin-only installs outside the sandbox. And per-app origins as the production answer, once there's a custom domain. Then the sandbox can stay open for experimenting.
+
+### So, which first?
+
+With apps installed this way, Model A is attractive, and much of the work is shared with Model B:
+- **Shared:** the app format, `prepareO2HApp` with module references and stand-ins, route matching, sources and VM composition, and the Navigation API client.
+- **Model A only:** shell assembly, installApp on the edge, the runtime served as static assets, `<base>`, and CSP.
+
+So either order works. I'd build the shared core first, then Model A on the edge for the store, since it shows the most new value: finished pages from a deep link, readable by crawlers. Model B then comes almost free, as the client half.
+
+### Questions
+
+1. **Isolation:** is the combination above right (CSP now, admin-only installs off the sandbox, per-app origins later)? Or should installs be admin-only everywhere until per-app origins exist?
+2. **Versions:** are immutable app URLs fine for now, with named aliases later?
+3. **The runtime as static assets on the edge:** OK? It's the one thing the edge "hardcodes", but it's its own code, like the worker itself.
+4. **App code during development:** add CORS headers to spa-ssi, so modules on `localhost:8010` can be imported by pages on the edge's origin (`localhost:8787`)?
+
 
