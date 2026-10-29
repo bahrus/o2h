@@ -312,4 +312,77 @@ So either order works. I'd build the shared core first, then Model A on the edge
 3. **The runtime as static assets on the edge:** OK? It's the one thing the edge "hardcodes", but it's its own code, like the worker itself.
 4. **App code during development:** add CORS headers to spa-ssi, so modules on `localhost:8010` can be imported by pages on the edge's origin (`localhost:8787`)?
 
+## Bruce's Response -- Doppelganger?
+
+I feel like what I am after is maybe a hybrid between model A and model B, but probably much closer to B.
+
+What I'm thinking is that model B construct itself as a traditional spa application, including the shell, but the dynamic content comes from a kind of mirroring of paths served from the spa-ssi server to the o2h-edge service according to a predictable mapping. 
+
+The only question then is what such a thing assist in making the existing Store application easier?  
+
+## Claude's Thoughts IV: the mirrored hybrid
+
+**As I read it:**
+- **spa-ssi** (any static server) serves the app, shell included: `http://localhost:8010/store/product/3` returns the store's page, via the SPA fallback for deep paths.
+- **The page asks the edge for the content of the same path, mirrored:** `https://o2h-edge…/o2h-app/<hash>/store/product/3`. The edge matches that path against the installed app's routes, calls the route's APIs, and returns **the rendered fragment** (not a document), with the VM embedded.
+- **The page inserts and hydrates it.** The Navigation API intercepts link clicks within the app and repeats this for the new path.
+
+So the shell and the app's code live with the app (Model B), and the **routes live on the edge**, installed by hash (from Model A). The page's navigation code becomes generic: "mirror my path to the edge, put the result in `<main>`".
+
+### Would it make the store simpler?
+
+**What the store's script does by hand today** (about 120 lines):
+- three `views`, each with an `api: arg => url` function and its own container;
+- `route()`, which parses the hash;
+- `show()`, which picks a view, shows or hides containers, renders categories once and then the main view, sets the title and the status, and handles errors;
+- `markCategory()`, which compares the current category on the page;
+- `hashchange` and worker-input wiring.
+
+**With mirroring, that becomes** the app definition, mostly data, plus one call:
+
+```js
+// app.json (installed once; its hash goes in the page)
+{ "routes": [
+    { "pattern": "/store/", "sources": { "categories": "…/products/categories", "products": "…/products" }, "config": { "map": { … } }, "title": "Fake Store" },
+    { "pattern": "/store/category/:name", "sources": { "categories": "…", "products": "…/products/category/{name}" }, "config": { … } },
+    { "pattern": "/store/product/:id", "sources": { "product": "…/products/{id}" }, "config": { "map": { "?.product": … } }, "title": "?.product?.title" }
+], "options": { "pipes": { "usd": { … } } } }
+```
+
+```js
+// the page
+import app from './app.json' with { type: 'json' };
+import { mirror } from 'navigate-gingerly/mirror.js';
+mirror({ edge: 'https://o2h-edge…', app, base: '/store/', into: document.querySelector('main') });
+```
+
+**What gets better, concretely:**
+1. **Real URLs:** `/store/category/jewelery` instead of `#category/jewelery`. They're shareable and bookmarkable, with Back, Forward, scroll and focus handled by the Navigation API, in generic code.
+2. **One request per page instead of two:** the category nav and the grid are two sources of **one** route, fetched in parallel by the edge and rendered as one fragment. The page no longer renders categories separately.
+3. **Routes as data:**
+   - **no `api` functions:** source URLs with `{name}` placeholders;
+   - **no `show()` branching:** the matched route decides what renders;
+   - **titles per route** from a path.
+4. **The current category is rendered, not patched:** `route.name` is in the VM, so with a small `eq` data pipe the worker sets `aria-current` itself, and `markCategory()` goes.
+5. **Less code in the page:** the store's script would shrink to its pipes (if any were functions), the app, and the `mirror` call. The rest moves into reusable code that every later app gets.
+6. **A path to server rendering (Model A) without redesign:** the edge already answers `/o2h-app/<hash>/store/product/3` with the fragment. Answering it with a **whole document** when it's a direct navigation is a header check (`Sec-Fetch-Dest: document`), given a shell. So the same mirrored URLs can later serve crawlers and first loads, which is the main thing B lacks.
+
+**What it costs:**
+- **New edge endpoints:** install (`PUT /o2h-app/<hash>`) and the mirrored render (`GET /o2h-app/<hash>/…`), returning fragments. Since they're fragments, not documents, the shared-origin concern from Thoughts III **doesn't arise yet**: the edge serves data-derived HTML that the app's own page inserts, as it does today.
+- **An install step,** like storing transforms now. `renderViaEdge` already does that once per worker, and the same pattern covers apps.
+- **The app's base path on the spa side** (`/store/`, or `/o2h-edge/demo/store/` in the workspace) has to be known for the mirroring. That's one option.
+- **Deep links need the SPA fallback** to serve the shell. spa-ssi already does this for extensionless paths. I'd check that it holds for `/demo/store/category/jewelery`.
+
+**Compared with pure Model B** (routes in the page's code, the edge unchanged): B would give the real URLs and the generic navigation code too, but not the single request per page (multi-source), the edge-side route parameters, or the path to server rendering. **Mirroring is worth the two new endpoints, I think.**
+
+**Honestly, for the store alone:** it's a modest gain. A small app with three views works fine by hand. The payoff is that **the next app needs no routing code at all**, plus real URLs and server rendering later. The store is the right size to prove it on.
+
+### Questions
+
+1. **The mapping:** `<edge>/o2h-app/<hash>/<path below the app's base>`, so `/store/product/3` → `…/o2h-app/<hash>/product/3`, with route patterns written relative to the base (`/product/:id`)? That keeps an app movable: the same app works at `/store/` or `/o2h-edge/demo/store/`.
+2. **The fragment's shape:** one tree for `<main>` (the nav included, as a source), as above? Or several named slots (`nav`, `main`), each with its own tree?
+3. **Installs:** open, like transforms, now that the edge only returns fragments? Origin isolation would come back as a question with server-rendered documents (Model A).
+4. **The `eq` data pipe** (for `aria-current`): add it to assign-gingerly as part of this?
+5. **Where it starts:** `navigate-gingerly` as a new sibling repo, holding the app format, the matching and composition (shared with the edge), and `mirror`? And the edge endpoints in o2h-edge?
+
 
