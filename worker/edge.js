@@ -15,8 +15,13 @@
  *     config: { map: { '*': card } },
  *     options: { pipes, style: true },
  * });
+ *
+ * The steps after the worker answers are exported on their own too (embeddedO2HData, hydrateO2H, renderO2HOnPage),
+ * and together as o2hRenderer, the shape navigate-gingerly's mirror takes: it renders routes through the worker,
+ * and o2h does the rest on the page.
  */
 import { assignFromAsync } from 'assign-gingerly/assignFromAsync.js';
+import { dataPipes } from 'assign-gingerly/pipes/dataPipes.js';
 import { prepareO2HTransform } from './transform.js';
 /** Transforms, prepared once per config and options object. */
 const prepared = new WeakMap();
@@ -51,8 +56,6 @@ export async function renderViaEdge(container, request) {
     const { config, options, hydrate } = request;
     const worker = request.worker.replace(/\/+$/, '');
     const transform = await prepare(config, options);
-    const pipes = options?.pipes;
-    const markerName = config.markerName ?? 'tree';
     let started = 0;
     const render = async () => {
         if (!stored.has(`${worker} ${transform.key}`))
@@ -69,17 +72,49 @@ export async function renderViaEdge(container, request) {
     const elapsed = Math.round(performance.now() - started);
     if ((response.headers.get('Content-Type') ?? '').startsWith('text/html')) {
         container.innerHTML = await response.text();
-        const script = container.querySelector(`script[type="application/json"][data-tree="${CSS.escape(markerName)}"]`);
-        const data = JSON.parse(script?.textContent ?? 'null');
-        const pending = container.querySelectorAll('[data-pending]').length;
-        await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } }, { ...hydrate, from: data, pipes });
+        const data = embeddedO2HData(container, config);
+        const { pending } = await hydrateO2H(container, config, data, options, hydrate);
         return { by: 'worker', data, elapsed, pending, lost: transform.lost };
     }
     if (!response.ok)
         throw new Error(`o2h-edge: ${await errorOf(response)}`);
     // The JSON, passed back: render it here
     const data = await response.json();
-    container.replaceChildren();
-    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } }, { ...hydrate, from: data, pipes });
+    await renderO2HOnPage(container, config, data, options, hydrate);
     return { by: 'page', data, elapsed, pending: 0, lost: transform.lost, error: response.headers.get('X-O2H-Error') ?? undefined };
+}
+/** The data o2h embedded after its HTML in a container (`<script type="application/json" data-tree="…">`), or null. */
+export function embeddedO2HData(container, config) {
+    const markerName = config.markerName ?? 'tree';
+    const script = container.querySelector(`script[type="application/json"][data-tree="${CSS.escape(markerName)}"]`);
+    return JSON.parse(script?.textContent ?? 'null');
+}
+/**
+ * Hydrate o2h's HTML in a container: builtIns.tree adopts it (`adopt: 'pending'`), with the page's real pipes, and
+ * finishes what the worker left pending. Pipes may be descriptors (as an app's JSON holds them): they're made into
+ * pipes. Returns how many elements were pending.
+ */
+export async function hydrateO2H(container, config, data, options, hydrate) {
+    const pending = container.querySelectorAll('[data-pending]').length;
+    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } }, { ...hydrate, from: data, pipes: pipesOf(options) });
+    return { pending };
+}
+/** Render data into a container on the page (when the worker passed it back instead of rendering it). */
+export async function renderO2HOnPage(container, config, data, options, hydrate) {
+    container.replaceChildren();
+    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } }, { ...hydrate, from: data, pipes: pipesOf(options) });
+}
+/** The options' pipes, with descriptors made into pipes (functions, data pipes included, pass through). */
+function pipesOf(options) {
+    const pipes = options?.pipes;
+    return pipes && dataPipes(pipes);
+}
+/** o2h's page side, as navigate-gingerly's mirror takes it. `hydrate`: more assignFrom options (e.g. `registry`). */
+export function o2hRenderer(hydrate) {
+    return {
+        prepare: prepareO2HTransform,
+        embedded: embeddedO2HData,
+        hydrate: (container, config, data, options) => hydrateO2H(container, config, data, options, hydrate),
+        render: (container, config, data, options) => renderO2HOnPage(container, config, data, options, hydrate),
+    };
 }

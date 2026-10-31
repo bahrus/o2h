@@ -123,6 +123,20 @@ const { by, data, elapsed, pending, lost, error } = await renderViaEdge(containe
 - **Falls back:** when the worker passes the JSON back (`X-O2H-Error`), the page renders it itself, and `by` is `'page'`, with the worker's reason in `error`.
 - **Throws** when the worker can't be reached, refuses the request (its guards, its rate limit), or the API fails.
 
+**The steps after the worker answers** are exported on their own too, for pages that fetch the HTML some other way:
+- `embeddedO2HData(container, config)`: the data embedded after the HTML;
+- `hydrateO2H(container, config, data, options?, hydrate?)`: hydrates it (`adopt: 'pending'`), returning `{ pending }`;
+- `renderO2HOnPage(container, config, data, options?, hydrate?)`: renders the data on the page instead.
+
+Pipes given as descriptors (as an app's JSON holds them) are made into pipes first. `o2hRenderer(hydrate?)` bundles the three, plus `prepareO2HTransform`, in the shape [navigate-gingerly](https://github.com/bahrus/navigate-gingerly)'s `mirror` takes. `mirror` routes a whole app through o2h-edge, path by path:
+
+```js
+import { mirror } from 'navigate-gingerly/mirror.js';
+import { o2hRenderer } from 'o2h/worker/edge.js';
+
+mirror({ worker, app, into: document.querySelector('main'), renderer: o2hRenderer() });
+```
+
 ## Options
 
 | Option | |
