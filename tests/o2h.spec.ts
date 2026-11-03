@@ -215,6 +215,26 @@ test.describe('o2h in Node (no DOM)', () => {
     expect(html).toBe('<!--?start name="tree"--><h2>DEMO</h2><p>On hold</p><b data-pending></b><!--?end-->');
   });
 
+  test('a total (the sum data pipe) survives prepareO2HTransform, so the worker renders it', async () => {
+    const { o2h } = await import(url('o2h.js'));
+    const { prepareO2HTransform } = await import(url('worker/transform.js'));
+    const { reviveO2HTransform } = await import(url('worker/core.js'));
+    const { dataPipes } = await import(url('node_modules/assign-gingerly/pipes/dataPipes.js'));
+    const pipes = dataPipes({
+      itemCount: { sum: '?.quantity' },
+      subtotal: { sum: ['?.quantity', '?.price'] },
+      usd: { intl: 'NumberFormat', locale: 'en-US', options: { style: 'currency', currency: 'USD' } },
+      total: { chain: ['subtotal', 'usd'] },
+    });
+    const config = { map: { lines: ['p', { 'data-count :=': '?.itemCount', 'textContent': '?.total' }] } };
+    const { transform, lost } = await prepareO2HTransform(config, { pipes });
+    expect(lost).toEqual([]);
+    expect(transform.options.pipes.subtotal).toEqual({ sum: ['?.quantity', '?.price'] });
+    const revived = reviveO2HTransform(structuredClone(transform));
+    const { html } = o2h(revived.config, { lines: [{ quantity: 2, price: 109.95 }, { quantity: 1, price: 22.3 }] }, revived.options);
+    expect(html).toBe('<!--?start name="tree"--><p data-count="3">$242.20</p><!--?end-->');
+  });
+
   test('renders { join } attribute values (tree`…` attribute text mixed with values) as one string', async () => {
     const { o2h } = await import(url('o2h.js'));
     const { tree } = await import(url('node_modules/assign-gingerly/DX/tree.js'));
