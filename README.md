@@ -2,6 +2,8 @@
 
 ## Introduction
 
+*o2h* stands for [JavaScript] **O**bject to (2) **H**TML, which then needs to be hydrated in the browser's main thread ("H2O", get it?).
+
 Careful performance measures show that HTML is the fastest format for a web page to display content.  It is the native format the browser knows how to render right away. The ability to display the content as it streams in is something the Web achieved way back in 1994 and was instrumental to the web's success. With the advent of new api's designed to stream HTML *fragments* into *portions* of a web page via [declarative](https://developer.chrome.com/docs/web-platform/declarative-partial-updates) [partial](https://github.com/whatwg/html/issues/13195) [updates](https://github.com/WICG/declarative-partial-updates/blob/main/fragment-include-explainer.md), looking at ways we can architect applications to make use of these new techniques is of paramount importance.  Particularly if the desire is to optimize the end user's experience on low-end mobile phones out in the field with spotty connections.
 
 The biggest roadblock is that in today's environment, backend API's that provide HTML output is quite rare.  JSON response is now the norm.  Rewriting or enhancing these API's to provide HTML could be costly to maintain if each such write is done "manually".
