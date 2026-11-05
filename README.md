@@ -111,7 +111,7 @@ The page then hydrates with the real code, with `adopt: 'pending'` (or `true`). 
 
 **Data pipes** (assign-gingerly's [`dataPipes`](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data): `Intl` formatters, lookups, built-ins, chains and aggregates, described as data) aren't lost. Their descriptors are stored, and the worker runs them. So the more of a config's pipes are data pipes, the more of the page the worker renders.
 
-**What travels is the descriptor, not `dataPipes`.** A descriptor such as `{ "sum": "?.quantity" }` is plain data, so it can sit in a JSON file. `dataPipes` is a function that turns descriptors into pipes. It's never stored, and JSON never mentions it: **whichever code is about to run the pipes calls it, on the descriptors it received.** An app's JSON therefore holds only descriptors, and nobody has to call `dataPipes` to write it:
+**What travels is the descriptor, not a function.** A descriptor such as `{ "sum": "?.quantity" }` is plain data, so it can sit in a JSON file, and **a `pipes` option may hold descriptors, functions, or both, everywhere.** So an app's JSON holds descriptors under `pipes`, and neither the app nor o2h has to convert them:
 
 ```json
 { "options": { "pipes": { "usd": { "intl": "NumberFormat", "locale": "en-US", "options": { "style": "currency", "currency": "USD" } } } } }
@@ -124,20 +124,20 @@ Here's what happens to `usd` on its way through a page and a worker:
 | The app | `app.json` | a descriptor | Plain JSON |
 | Preparing the transform | `prepareO2HTransform` ([`worker/transform.ts`](worker/transform.ts)) | a descriptor | Plain objects are copied as they are, so nothing is lost |
 | Stored | the worker's KV, or IndexedDB | a descriptor | |
-| **Rendering in the worker** | `reviveO2HTransform` ([`worker/core.ts`](worker/core.ts)) | **a function** | Calls `dataPipes` on the stored pipes, with stubs for any lost ones |
-| **Hydrating on the page** | `hydrateO2H` / `renderO2HOnPage` ([`worker/edge.ts`](worker/edge.ts)) | **a function** | Call `dataPipes` on `options.pipes` |
+| **Rendering in the worker** | assign-gingerly's path resolution | **a function** | Made when a path first needs it. [`worker/core.ts`](worker/core.ts) imports assign-gingerly's `pipes/dataPipes.js` so that it's ready: `o2h()` is synchronous. |
+| **Hydrating on the page** | assign-gingerly's `assignFromAsync` | **a function** | Made the same way. `assignFromAsync` loads the module when it sees a descriptor. |
 
-So there are two independent calls, one on each side, each making its own functions from the same data. The functions themselves never travel.
+The worker and the page each make their own functions from the same data. The functions themselves never travel. How the conversion works, and what it costs, is in assign-gingerly's [Data pipes](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data).
 
-**On a page that writes its pipes in JavaScript,** the same descriptors take one more step at the start. There, you call `dataPipes` yourself, so each function it returns carries its descriptor (under a registered symbol). `prepareO2HTransform` copies that descriptor in place of the function, and from there the table above applies:
+**A page that writes its pipes in JavaScript** can pass descriptors the same way, or call `dataPipes` itself. Each function that returns carries its descriptor (under a registered symbol), and `prepareO2HTransform` copies that descriptor in place of the function, so from there the table above applies:
 
 ```js
 const pipes = dataPipes({ usd: { intl: 'NumberFormat', locale: 'en-US', options: { style: 'currency', currency: 'USD' } } });
 ```
 
-**Only a pipe that's really code stops the trip.** A function without a descriptor, such as `s => s.trim()` or an app's `{ "import": "./pipes.js" }` once it's loaded, becomes a [stand-in](#configs-with-code-stand-ins-and-pending-parts), and what uses it is left to the page. `dataPipes` passes functions through, so both kinds can share one `pipes` object.
+**Only a pipe that's really code stops the trip.** A function without a descriptor, such as `s => s.trim()` or an app's `{ "import": "./pipes.js" }` once it's loaded, becomes a [stand-in](#configs-with-code-stand-ins-and-pending-parts), and what uses it is left to the page. Both kinds can share one `pipes` object. The stubs a worker uses for lost pipes are functions too, so they sit beside the descriptors, and a chain reaching one leaves its part to the page.
 
-**Page code that renders on its own** isn't covered by these steps, and calls `dataPipes` itself with the app's descriptors. The store's cart does: `dataPipes(app.options.pipes)`.
+**Calling `o2h()` directly** with descriptors needs `import 'assign-gingerly/pipes/dataPipes.js'` first, since it's synchronous and can't load the module itself.
 
 ## Edge first paint: o2h-edge
 
@@ -166,7 +166,7 @@ const { by, data, elapsed, pending, lost, error } = await renderViaEdge(containe
 - `hydrateO2H(container, config, data, options?, hydrate?)`: hydrates it (`adopt: 'pending'`), returning `{ pending }`;
 - `renderO2HOnPage(container, config, data, options?, hydrate?)`: renders the data on the page instead.
 
-Pipes given as descriptors (as an app's JSON holds them) are made into pipes first. `o2hRenderer(hydrate?)` bundles the three, plus `prepareO2HTransform`, in the shape [navigate-gingerly](https://github.com/bahrus/navigate-gingerly)'s `mirror` takes. `mirror` routes a whole app through o2h-edge, path by path:
+`o2hRenderer(hydrate?)` bundles the three, plus `prepareO2HTransform`, in the shape [navigate-gingerly](https://github.com/bahrus/navigate-gingerly)'s `mirror` takes. `mirror` routes a whole app through o2h-edge, path by path:
 
 ```js
 import { mirror } from 'navigate-gingerly/mirror.js';
@@ -179,7 +179,7 @@ mirror({ worker, app, into: document.querySelector('main'), renderer: o2hRendere
 
 | Option | |
 |---|---|
-| `pipes` | Named unary functions usable as path segments (`'?.date_utc?.parseDate?.longUtc'`) |
+| `pipes` | Named unary functions usable as path segments (`'?.date_utc?.parseDate?.longUtc'`), or [descriptors](#data-pipes-survive) of them |
 | `aka` | Aliases, under the config's own `aka` |
 | `protocols` | Synchronous protocol handlers (`name://key` values) |
 | `snippets` | Static HTML for `{ snippet: 'name' }` specifications, by name: written as is (trimmed), with the `data-hole` elements the spec's `holes` name rendered like elements (needs well-formed hole markup). The same option builtIns.tree takes, which also checks it on the client (see [tree.md, Snippets](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/tree.md#snippets-static-html)). |

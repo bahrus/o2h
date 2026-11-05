@@ -22,7 +22,6 @@
  */
 
 import { assignFromAsync } from 'assign-gingerly/assignFromAsync.js';
-import { dataPipes } from 'assign-gingerly/pipes/dataPipes.js';
 import type { O2HConfig, O2HOptions } from '../types/o2h/types.js';
 import { prepareO2HTransform } from './transform.js';
 import type { O2HLost, PreparedO2HTransform } from './transform.js';
@@ -134,20 +133,14 @@ export function embeddedO2HData(container: Element, config: O2HConfig): unknown 
 export async function hydrateO2H(container: Element, config: O2HConfig, data: unknown, options?: O2HOptions, hydrate?: Record<string, unknown>): Promise<{ pending: number }> {
     const pending = container.querySelectorAll('[data-pending]').length;
     await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } } as any,
-        { ...hydrate, from: data, pipes: pipesOf(options) } as any);
+        { ...hydrate, from: data, pipes: options?.pipes } as any);
     return { pending };
 }
 
 /** Render data into a container on the page (when the worker passed it back instead of rendering it). */
 export async function renderO2HOnPage(container: Element, config: O2HConfig, data: unknown, options?: O2HOptions, hydrate?: Record<string, unknown>): Promise<void> {
     container.replaceChildren();
-    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } } as any, { ...hydrate, from: data, pipes: pipesOf(options) } as any);
-}
-
-/** The options' pipes, with descriptors made into pipes (functions, data pipes included, pass through). */
-function pipesOf(options: O2HOptions | undefined): unknown {
-    const pipes = options?.pipes;
-    return pipes && dataPipes(pipes as any);
+    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } } as any, { ...hydrate, from: data, pipes: options?.pipes } as any);
 }
 
 /** o2h's page side, as navigate-gingerly's mirror takes it. `hydrate`: more assignFrom options (e.g. `registry`). */

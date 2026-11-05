@@ -55,10 +55,10 @@
     "update": "ncu -u && npm install"
   },
   "dependencies": {
-    "assign-gingerly": "0.0.107"
+    "assign-gingerly": "0.0.108"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "esbuild": "^0.28.2",
     "spa-ssi": "0.0.31"
   },

@@ -13,7 +13,8 @@
  */
 
 import { isLost, LostReference, o2h } from '../o2h.js';
-import { dataPipes } from 'assign-gingerly/pipes/dataPipes.js';
+// For its side effect: stored transforms hold descriptors under `pipes`, and a worker has to have it ready, synchronously
+import 'assign-gingerly/pipes/dataPipes.js';
 import type { O2HConfig, O2HOptions } from '../types/o2h/types.js';
 import { CODE_MAPS } from './transform.js';
 import type { O2HTransform } from './store.js';
@@ -82,9 +83,9 @@ function withError(upstream: Response, message: string): Response {
 /**
  * The config and options to render a transform with, in a worker: stand-in pipes and protocols become stubs
  * that throw LostReference (so o2h leaves what uses them to the client); stand-in managers are left out (o2h
- * then renders their subtree from the raw value, marked pending). Stored data pipes (descriptors, from
- * assign-gingerly's dataPipes) become pipes again, so they run here; a chain reaching a lost pipe throws
- * through its stub. Stand-ins elsewhere stay, and o2h treats them as lost too.
+ * then renders their subtree from the raw value, marked pending). Stored data pipes stay descriptors, which
+ * `pipes` may hold, beside the stubs, so they run here; a chain reaching a lost pipe throws through its stub.
+ * Stand-ins elsewhere stay, and o2h treats them as lost too.
  */
 export function reviveO2HTransform(transform: O2HTransform): { config: O2HConfig; options: O2HOptions } {
     const options: any = { ...transform.options };
@@ -96,8 +97,7 @@ export function reviveO2HTransform(transform: O2HTransform): { config: O2HConfig
             if (!isLost(entry)) revived[name] = entry;
             else if (kind !== 'manager') revived[name] = () => { throw new LostReference(`the ${kind} "${name}"`); };
         }
-        // Pipes: descriptors become functions again (functions, i.e. the stubs, pass through)
-        options[key] = key === 'pipes' ? dataPipes(revived) : revived;
+        options[key] = revived;
     }
     return { config: transform.config, options };
 }

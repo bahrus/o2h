@@ -151,3 +151,122 @@ Two things stay:
 ### Your call
 
 Shall I go ahead with `pipes` holding descriptors, in assign-gingerly first, then simplifying o2h and the cart?
+
+## Bruce's Response II
+
+Ah yes, the reason for the dataPipes function was to prevent forcing importing the now 1.4 KB even if not used.
+
+I think your recommended adjustments are quite reasonable.  I would add one addendum.  Maybe assignFrom-extension should include the dataPipes function import.
+
+Please proceed, and do update the docs/pipes.md to update the measured size and explain how to incur the cost via the import.
+
+## Claude's Implementation Notes II: `pipes` holds descriptors
+
+**Done, with your addendum.** A `pipes` option now takes functions, descriptors, or both, everywhere.
+
+### Before you publish: order matters
+
+o2h now relies on this assign-gingerly, and resolves a real copy of the published 0.0.107. So:
+
+1. **Publish assign-gingerly** (it has the new behavior; your watcher has built its `.js`).
+2. **Install it in o2h,** and bump `"assign-gingerly": "0.0.107"` in o2h's package.json.
+3. **Run `npm run build:worker` in o2h.** I did not rebuild `o2h-sw.js`: built now, it would bundle 0.0.107, and data pipes would break there. The current bundle is self-contained, so it keeps working until then.
+4. **Then publish o2h.**
+
+**Until step 2, two of o2h's own tests fail** with `pipe is not a function`: "data pipes survive prepareO2HTransform…" and "a total (the sum data pipe)…". That's the pending install. Both pass against the new assign-gingerly in my mirror. I chose to make the o2h change now, since you said to proceed, rather than leave it for later. o2h-edge isn't affected: it links the sibling repo.
+
+### assign-gingerly
+
+- **[resolve/getValues.ts](../../../assign-gingerly/resolve/getValues.ts):** `navigatePath` calls a pipe directly if it's a function. Otherwise, `makePipe` applies `dataPipes` to the whole `pipes` object, once, kept in a `WeakMap`. `registerPipeMaker` is the slot `dataPipes` fills, so the core doesn't import it.
+- **[pipes/dataPipes.ts](../../../assign-gingerly/pipes/dataPipes.ts):** registers itself when it's loaded.
+- **[assignFromAsync.ts](../../../assign-gingerly/assignFromAsync.ts):** looks at a `pipes` object once and, if it holds a descriptor, loads the module with a dynamic `import()`. Concurrent calls wait for the same load. There's no extra `await` when no load is needed.
+- **[assignFrom-extension.ts](../../../assign-gingerly/assignFrom-extension.ts), your addendum:** imports dataPipes, so `obj.assignFrom()` takes descriptors. `assignFromAsync-extension` doesn't need it, since it goes through `assignFromAsync`.
+- **Types:** `PipeEntries` (functions, descriptors or both) for the `pipes` options, in the types submodule's three checkouts. `Pipes` stays functions only, and is what `dataPipes()` returns.
+
+**One thing I hadn't expected: [tsconfig.json](../../../assign-gingerly/tsconfig.json) didn't include `assignFrom-extension.ts`.** Nothing was compiling it, and its `.js` was maintained separately, last touched at 0.0.59. So my import never reached the `.js`, which my test caught. I added it to `include`; the bodies matched, so only the import and the comments changed. `assignFromAsync-extension.ts` and `object-extension.ts` aren't in `include` either. I left those alone, so their `.js` can still drift.
+
+### o2h and the store
+
+- **[worker/core.ts](../../worker/core.ts):** `reviveO2HTransform` now only replaces lost pipes with stubs. The file imports `dataPipes.js` for its side effect, since `o2h()` is synchronous.
+- **[worker/edge.ts](../../worker/edge.ts):** `pipesOf` and the `dataPipes` import are gone. `assignFromAsync` takes care of it.
+- **[o2h-edge/demo/store/cart.js](../../../o2h-edge/demo/store/cart.js):** passes `pipes` as it is.
+
+### Size
+
+Measured with esbuild, minified and gzipped:
+
+| | Before | After |
+|---|---|---|
+| `dataPipes` | | about 1.4 KB |
+| `assignFrom.js`, bundled | 23,608 bytes | 23,728 bytes (about 120 bytes for the slot and `makePipe`) |
+| `assignFromAsync.js`, with code splitting | | `dataPipes` is its own chunk, 1,436 bytes |
+
+Pages with function pipes pay those 120 bytes and nothing else. A bundler that doesn't split code will inline `dataPipes` into anything using `assignFromAsync`, because of the `import()`.
+
+### Docs
+
+- **[docs/pipes.md](../../../assign-gingerly/docs/pipes.md):** the size corrected to 1.4 KB, and how to incur the cost: a table of `assignFromAsync` (loaded for you), `assignFrom-extension.js` (always included), and `assignFrom` / `getValue` (`import 'assign-gingerly/pipes/dataPipes.js'`, or an error saying so).
+- **[o2h/README.md](../../README.md):** the "Data pipes survive" table now shows the one rule, instead of two `dataPipes` calls. Your earlier reading of the data flow there is simpler now.
+- **[navigate-gingerly/README.md](../../../navigate-gingerly/README.md):** the note trimmed to match.
+
+### Checked
+
+- **assign-gingerly:** 66 of 66 in Chromium, in a mirror of the workspace, built there. Its extension page passes 11 of 11. The new test runs each case in a fresh Node process, since whether the module is loaded is the point:
+  - not loaded: function pipes work, and a descriptor throws the error, from both `getValue` and `assignFrom`;
+  - imported: sync calls work, from JSON too, and a chain reaches a function beside descriptors;
+  - `assignFromAsync` loads it, for concurrent calls too, and then sync calls work as well;
+  - `assignFromAsync` doesn't load it for function pipes;
+  - `assignFrom-extension.js` works with no other import;
+  - a bad descriptor throws at first use, naming it.
+
+  The new test also passes in the real repo, on your watcher's build.
+- **o2h:** all pass in the mirror (24 passed; the 24 skipped are its Node tests, which run once rather than per browser). In the real repo, the two failures above.
+- **o2h-edge, in the mirror:** `npm test` 22 of 22.
+- **The store, in Chromium, Firefox and WebKit:** the worker renders, hydration binds the Add button, and the cart totals $100.59, then $78.29, then $0.00 when emptied, all with no `dataPipes` call in o2h's page code or the cart.
+- **The BLS chart, in all three browsers:** rendered by the worker from `min` / `max`, with the same results as before.
+
+No BLS calls: those ran against the saved responses.
+
+**Changed:**
+- **assign-gingerly:** the files above, `tests/pure-modules.spec.ts`, `docs/pipes.md`, `tsconfig.json`, and the types.
+- **o2h:** `worker/core.ts`, `worker/edge.ts` and their `.js`, the types, and the README.
+- **navigate-gingerly:** the types and the README.
+- **o2h-edge:** `demo/store/cart.js`.
+
+Nothing is committed.
+
+## Bruce's Response III
+
+I do see some changes made to [pipes.md](../../../assign-gingerly/docs/pipes.md), but I still only see examples with the function dataPipes, with no explanations for how to use JSON serializable third arguments, where the dataPipes gets applied assuming the the import is made.  Is it possible to add a clear example of this?
+
+## Claude's Response III
+
+**You were right, and it's fixed.** The section led with `dataPipes()`, and the JSON route was one short `assignFromAsync` example plus a table cell. [docs/pipes.md](../../../assign-gingerly/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data) now leads with the JSON form.
+
+The section's new order:
+
+1. **The third argument as JSON:** a complete `options.json`, holding both `from` and `pipes`, then this:
+
+   ```js
+   import { assignFrom } from 'assign-gingerly/assignFrom.js';
+   import 'assign-gingerly/pipes/dataPipes.js';          // imported, never called
+   import options from './options.json' with { type: 'json' };
+
+   const summary = {};
+   assignFrom(summary, { '?.count': '?.lines?.items', '?.amount': '?.lines?.total' }, options);
+
+   // summary: { count: 3, amount: '$242.20' }
+   ```
+
+   After that come how the descriptors become pipes (the first path that reaches one converts the whole object), and the same example with `assignFromAsync` and with the extension, neither of which needs the import.
+2. **What it costs:** the 1.4 KB table, with the import case first.
+3. **Calling `dataPipes()` yourself:** the former opening example, now marked optional, with why you'd want it.
+4. **The descriptors:** the table of kinds.
+
+Smaller changes:
+- **Totals:** the code example called `dataPipes()` and repeated the same data, so it's now a sentence pointing at the JSON above.
+- **Chart scale:** it's now a plain object.
+- **"Errors come early":** this only held for `dataPipes()`, so that point moved into its section.
+- **"The descriptors are what's serializable":** this bullet is gone, since the JSON section now says it, including the link to o2h.
+
+**Checked:** I ran all three examples from a separate project, importing by package name and reading a real `options.json`, against your watcher's build. Each gave `{ count: 3, amount: '$242.20' }`. `dataPipes()` now appears in the page only in its own section. Only `docs/pipes.md` changed for this. Nothing is committed.
