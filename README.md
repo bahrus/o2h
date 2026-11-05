@@ -109,7 +109,35 @@ The page then hydrates with the real code, with `adopt: 'pending'` (or `true`). 
 
 #### Data pipes survive
 
-**Data pipes** (assign-gingerly's [`dataPipes`](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data): `Intl` formatters, lookups, built-ins and chains, described as data) aren't lost. Their descriptors are stored, and the worker runs them. So the more of a config's pipes are data pipes, the more of the page the worker renders.
+**Data pipes** (assign-gingerly's [`dataPipes`](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data): `Intl` formatters, lookups, built-ins, chains and aggregates, described as data) aren't lost. Their descriptors are stored, and the worker runs them. So the more of a config's pipes are data pipes, the more of the page the worker renders.
+
+**What travels is the descriptor, not `dataPipes`.** A descriptor such as `{ "sum": "?.quantity" }` is plain data, so it can sit in a JSON file. `dataPipes` is a function that turns descriptors into pipes. It's never stored, and JSON never mentions it: **whichever code is about to run the pipes calls it, on the descriptors it received.** An app's JSON therefore holds only descriptors, and nobody has to call `dataPipes` to write it:
+
+```json
+{ "options": { "pipes": { "usd": { "intl": "NumberFormat", "locale": "en-US", "options": { "style": "currency", "currency": "USD" } } } } }
+```
+
+Here's what happens to `usd` on its way through a page and a worker:
+
+| Step | Where | `usd` is | |
+|---|---|---|---|
+| The app | `app.json` | a descriptor | Plain JSON |
+| Preparing the transform | `prepareO2HTransform` ([`worker/transform.ts`](worker/transform.ts)) | a descriptor | Plain objects are copied as they are, so nothing is lost |
+| Stored | the worker's KV, or IndexedDB | a descriptor | |
+| **Rendering in the worker** | `reviveO2HTransform` ([`worker/core.ts`](worker/core.ts)) | **a function** | Calls `dataPipes` on the stored pipes, with stubs for any lost ones |
+| **Hydrating on the page** | `hydrateO2H` / `renderO2HOnPage` ([`worker/edge.ts`](worker/edge.ts)) | **a function** | Call `dataPipes` on `options.pipes` |
+
+So there are two independent calls, one on each side, each making its own functions from the same data. The functions themselves never travel.
+
+**On a page that writes its pipes in JavaScript,** the same descriptors take one more step at the start. There, you call `dataPipes` yourself, so each function it returns carries its descriptor (under a registered symbol). `prepareO2HTransform` copies that descriptor in place of the function, and from there the table above applies:
+
+```js
+const pipes = dataPipes({ usd: { intl: 'NumberFormat', locale: 'en-US', options: { style: 'currency', currency: 'USD' } } });
+```
+
+**Only a pipe that's really code stops the trip.** A function without a descriptor, such as `s => s.trim()` or an app's `{ "import": "./pipes.js" }` once it's loaded, becomes a [stand-in](#configs-with-code-stand-ins-and-pending-parts), and what uses it is left to the page. `dataPipes` passes functions through, so both kinds can share one `pipes` object.
+
+**Page code that renders on its own** isn't covered by these steps, and calls `dataPipes` itself with the app's descriptors. The store's cart does: `dataPipes(app.options.pipes)`.
 
 ## Edge first paint: o2h-edge
 
