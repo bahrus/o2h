@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Config Formats Benchmark</title>
+    <style>
+        :root { --fg: #1b1f24; --bg: #fff; --muted: #5b6470; --line: #d8dde3; }
+        @media (prefers-color-scheme: dark) {
+            :root { --fg: #e6e9ed; --bg: #15181c; --muted: #9aa4b0; --line: #333a42; }
+        }
+        body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); margin: 0 auto; padding: 16px; max-width: 900px; }
+        .scroll { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; margin: 1em 0; font-variant-numeric: tabular-nums; }
+        th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: right; white-space: nowrap; }
+        th:first-child, td:first-child { text-align: left; }
+        .muted { color: var(--muted); }
+        button { font: inherit; padding: 8px 20px; }
+        iframe { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Config formats: JSON or JS?</h1>
+    <p class="muted">
+        Runs on this device. Each load is a fresh page in a hidden frame, and times are medians in ms. Run it twice: the
+        first pass includes first-visit costs, and the second shows repeat visits, once compiled JS can be cached.
+        Query options: <code>?samples=15</code>.
+    </p>
+    <p><button id="run" type="button">Run</button> <span id="status" aria-live="polite"></span></p>
+    <div id="results"></div>
+
+    <script type="module">
+        const samples = Number(new URLSearchParams(location.search).get('samples') ?? 15);
+        const SIZES = { disk: 'As it is', x1: 'Minified', x10: '10×', x100: '100×' };
+        const VARIANTS = { fetchParse: 'fetch + parse', jsonModule: 'JSON module', jsModule: 'JS module', idbObject: 'IndexedDB object', idbString: 'IndexedDB string' };
+        const button = document.getElementById('run');
+        const status = document.getElementById('status');
+        const results = document.getElementById('results');
+
+        const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+
+        /** bench.html, in a new frame: what it reports. */
+        function visit(query) {
+            const frame = document.createElement('iframe');
+            frame.src = `bench.html?${new URLSearchParams(query)}`;
+            return new Promise((resolve, reject) => {
+                frame.onload = () => frame.contentWindow.done.then(resolve, reject);
+                document.body.append(frame);
+            }).finally(() => frame.remove());
+        }
+
+        function table(caption, columns, rows) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'scroll';
+            const element = wrapper.appendChild(document.createElement('table'));
+            element.createCaption().textContent = caption;
+            element.createTHead().insertRow().append(...['', ...columns].map(text => Object.assign(document.createElement('th'), { textContent: text })));
+            const body = element.createTBody();
+            for (const [label, values] of rows) {
+                const row = body.insertRow();
+                row.insertCell().textContent = label;
+                for (const value of values) row.insertCell().textContent = value;
+            }
+            results.append(wrapper);
+        }
+
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            results.replaceChildren();
+            try {
+                const parsing = [];
+                const loading = [];
+                for (const [size, label] of Object.entries(SIZES)) {
+                    status.textContent = `${label}…`;
+                    await visit({ setup: 1, size });
+                    const micro = await visit({ micro: 1, size });
+                    parsing.push([label, [micro.jsonParse, micro.jsLiteral, micro.structuredClone]]);
+                    const times = {};
+                    for (let i = 0; i < samples; i++) {
+                        for (const variant of Object.keys(VARIANTS)) (times[variant] ??= []).push((await visit({ variant, size })).ms);
+                    }
+                    loading.push([label, Object.keys(VARIANTS).map(variant => median(times[variant]).toFixed(2))]);
+                }
+                table('Parsing alone', ['JSON.parse', 'JS literal', 'structured clone'], parsing);
+                table('Whole load', Object.values(VARIANTS), loading);
+                status.textContent = 'Done.';
+            } catch (e) {
+                status.textContent = `Failed: ${e.message}`;
+            }
+            button.disabled = false;
+        });
+    </script>
+</body>
+</html>

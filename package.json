@@ -50,6 +50,7 @@
     "build:worker": "node worker/build.mjs",
     "serve": "node ./node_modules/spa-ssi/serve.js",
     "test": "playwright test",
+    "bench:config": "node demo/benchmark/config-formats/run.mjs",
     "package-check": "package-check",
     "safari": "npx playwright wk http://localhost:8000",
     "update": "ncu -u && npm install"

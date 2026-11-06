@@ -21,6 +21,7 @@
  * and o2h does the rest on the page.
  */
 import { assignFromAsync } from 'assign-gingerly/assignFromAsync.js';
+import { ItemscopeRegistry } from 'assign-gingerly/assignGingerly.js';
 import { prepareO2HTransform } from './transform.js';
 /** Transforms, prepared once per config and options object. */
 const prepared = new WeakMap();
@@ -89,21 +90,35 @@ export function embeddedO2HData(container, config) {
     return JSON.parse(script?.textContent ?? 'null');
 }
 /**
- * Hydrate o2h's HTML in a container: builtIns.tree adopts it (`adopt: 'pending'`), with the page's real pipes, and
- * finishes what the worker left pending. Pipes may be descriptors (as an app's JSON holds them): they're made into
- * pipes. Returns how many elements were pending.
+ * Hydrate o2h's HTML in a container: builtIns.tree adopts it (`adopt: 'pending'`), with the page's real pipes and
+ * managers, and finishes what the worker left pending. Pipes may be descriptors (as an app's JSON holds them): they're
+ * made into pipes. Returns how many elements were pending.
  */
 export async function hydrateO2H(container, config, data, options, hydrate) {
     const pending = container.querySelectorAll('[data-pending]').length;
-    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } }, { ...hydrate, from: data, pipes: options?.pipes });
+    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } }, pageOptions(data, options, hydrate));
     return { pending };
 }
 /** Render data into a container on the page (when the worker passed it back instead of rendering it). */
 export async function renderO2HOnPage(container, config, data, options, hydrate) {
     container.replaceChildren();
-    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } }, { ...hydrate, from: data, pipes: options?.pipes });
+    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } }, pageOptions(data, options, hydrate));
 }
-/** o2h's page side, as navigate-gingerly's mirror takes it. `hydrate`: more assignFrom options (e.g. `registry`). */
+const registries = new WeakMap();
+/** What builtIns.tree runs with on the page: the `hydrate` options, the pipes, and `options.managers` as the itemscope registry, unless `hydrate` gives one. */
+function pageOptions(data, options, hydrate) {
+    const { pipes, managers } = options ?? {};
+    const page = { ...hydrate, from: data, pipes };
+    const given = hydrate?.registry;
+    if (managers && Object.keys(managers).length && !given?.itemscopeRegistry) {
+        let itemscopeRegistry = registries.get(managers);
+        if (!itemscopeRegistry)
+            registries.set(managers, itemscopeRegistry = new ItemscopeRegistry(managers));
+        page.registry = { ...given, itemscopeRegistry };
+    }
+    return page;
+}
+/** o2h's page side, as navigate-gingerly's mirror takes it. `hydrate`: more assignFrom options. */
 export function o2hRenderer(hydrate) {
     return {
         prepare: prepareO2HTransform,

@@ -22,6 +22,7 @@
  */
 
 import { assignFromAsync } from 'assign-gingerly/assignFromAsync.js';
+import { ItemscopeRegistry } from 'assign-gingerly/assignGingerly.js';
 import type { O2HConfig, O2HOptions } from '../types/o2h/types.js';
 import { prepareO2HTransform } from './transform.js';
 import type { O2HLost, PreparedO2HTransform } from './transform.js';
@@ -34,9 +35,9 @@ export interface EdgeRender {
     api: string;
     /** The tree config, as for builtIns.tree */
     config: O2HConfig;
-    /** As for prepareO2HTransform: pipes, managers, style … Pipes are also used to hydrate. */
+    /** As for prepareO2HTransform: pipes, managers, style … Pipes and managers are also used to hydrate. */
     options?: O2HOptions;
-    /** More assignFrom options for hydrating (e.g. `registry`, for managers). `from` and `pipes` are set here. */
+    /** More assignFrom options for hydrating. `from` and `pipes` are set here, and `registry` too, from `options.managers`, unless it's given. */
     hydrate?: Record<string, unknown>;
 }
 
@@ -126,24 +127,38 @@ export function embeddedO2HData(container: Element, config: O2HConfig): unknown 
 }
 
 /**
- * Hydrate o2h's HTML in a container: builtIns.tree adopts it (`adopt: 'pending'`), with the page's real pipes, and
- * finishes what the worker left pending. Pipes may be descriptors (as an app's JSON holds them): they're made into
- * pipes. Returns how many elements were pending.
+ * Hydrate o2h's HTML in a container: builtIns.tree adopts it (`adopt: 'pending'`), with the page's real pipes and
+ * managers, and finishes what the worker left pending. Pipes may be descriptors (as an app's JSON holds them): they're
+ * made into pipes. Returns how many elements were pending.
  */
 export async function hydrateO2H(container: Element, config: O2HConfig, data: unknown, options?: O2HOptions, hydrate?: Record<string, unknown>): Promise<{ pending: number }> {
     const pending = container.querySelectorAll('[data-pending]').length;
-    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } } as any,
-        { ...hydrate, from: data, pipes: options?.pipes } as any);
+    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', adopt: 'pending', ...config } } as any, pageOptions(data, options, hydrate));
     return { pending };
 }
 
 /** Render data into a container on the page (when the worker passed it back instead of rendering it). */
 export async function renderO2HOnPage(container: Element, config: O2HConfig, data: unknown, options?: O2HOptions, hydrate?: Record<string, unknown>): Promise<void> {
     container.replaceChildren();
-    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } } as any, { ...hydrate, from: data, pipes: options?.pipes } as any);
+    await assignFromAsync(container, { '?. =>': { do: 'builtIns.tree', ...config } } as any, pageOptions(data, options, hydrate));
 }
 
-/** o2h's page side, as navigate-gingerly's mirror takes it. `hydrate`: more assignFrom options (e.g. `registry`). */
+const registries = new WeakMap<object, ItemscopeRegistry>();
+
+/** What builtIns.tree runs with on the page: the `hydrate` options, the pipes, and `options.managers` as the itemscope registry, unless `hydrate` gives one. */
+function pageOptions(data: unknown, options?: O2HOptions, hydrate?: Record<string, unknown>): any {
+    const { pipes, managers } = options ?? {};
+    const page: Record<string, unknown> = { ...hydrate, from: data, pipes };
+    const given = hydrate?.registry as Record<string, unknown> | undefined;
+    if (managers && Object.keys(managers).length && !given?.itemscopeRegistry) {
+        let itemscopeRegistry = registries.get(managers);
+        if (!itemscopeRegistry) registries.set(managers, itemscopeRegistry = new ItemscopeRegistry(managers as any));
+        page.registry = { ...given, itemscopeRegistry };
+    }
+    return page;
+}
+
+/** o2h's page side, as navigate-gingerly's mirror takes it. `hydrate`: more assignFrom options. */
 export function o2hRenderer(hydrate?: Record<string, unknown>) {
     return {
         prepare: prepareO2HTransform,

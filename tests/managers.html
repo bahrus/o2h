@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>A manager named in JSON: the worker's HTML, hydrated with options.managers</title>
+  <!-- #include virtual="/imports.html" -->
+</head>
+<body>
+  <pre id="differences"></pre>
+  <div id="test-complete" style="display:none;" data-status=""></div>
+  <script type="module">
+    import { o2h } from '../o2h.js';
+    import { reviveO2HTransform } from '../worker/core.js';
+    import { o2hRenderer } from '../worker/edge.js';
+    import { ItemscopeRegistry, whenEventsBound } from 'assign-gingerly/index.js';
+
+    class Counter {
+      static is = 'counter-view';
+      count = 0;
+      #rebind;
+      constructor(element, initVals, { rebind }) {
+        Object.assign(this, initVals);
+        this.#rebind = rebind;
+      }
+      get label() { return `${this.name}: ${this.count}`; }
+      more() { this.count++; this.#rebind(); }
+    }
+    /** The same, told apart: a registry given to o2hRenderer has to win over options.managers. */
+    class Other extends Counter {
+      get label() { return `other ${this.name}: ${this.count}`; }
+    }
+
+    // As an app's JSON has it: the config names the manager, and holds no code
+    const config = JSON.parse(JSON.stringify({
+      map: {
+        data: [
+          { tag: 'section', ish: 'counter-view' }, {},
+          [
+            ['h2', { textContent: '?.label' }],
+            ['p', { textContent: '?.price?.usd' }],
+            ['button', { type: 'button', ' +=': { on: 'click', call: 'more' }, textContent: 'More' }],
+          ],
+        ],
+      },
+    }));
+    const usd = { intl: 'NumberFormat', locale: 'en-US', options: { style: 'currency', currency: 'USD' } };
+    const options = { pipes: { usd }, managers: { 'counter-view': Counter } };
+    const vm = { data: { name: 'Ada', price: 22.3 } };
+
+    const differences = [];
+    const expect = (what, actual, expected) => {
+      if (actual !== expected) differences.push(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    };
+    const complete = document.getElementById('test-complete');
+    const nextRender = () => new Promise(resolve => setTimeout(resolve, 50));
+
+    /** What the worker would send: the stored transform, revived, rendered with the VM embedded. */
+    async function fromWorker(renderer) {
+      const { transform, lost } = await renderer.prepare(config, options);
+      const { config: stored, options: storedOptions } = reviveO2HTransform(JSON.parse(JSON.stringify(transform)));
+      const container = document.createElement('div');
+      container.innerHTML = o2h(stored, vm, { ...storedOptions, embed: true }).html;
+      document.body.append(container);
+      return { container, lost };
+    }
+    const heading = container => container.querySelector('h2').textContent;
+
+    try {
+      // The worker can't have the manager: it's lost, and its part is left to the page
+      const renderer = o2hRenderer();
+      const { container, lost } = await fromWorker(renderer);
+      expect('lost', lost.map(({ path, kind }) => `${path} ${kind}`).join(), 'options.managers.counter-view manager');
+      expect('rendered by the worker', container.querySelector('p').textContent, '$22.30');
+      expect('left to the page', heading(container), '');
+
+      // Hydrated with nothing but the options the JSON app resolved to
+      const button = container.querySelector('button');
+      const { pending } = await renderer.hydrate(container, config, renderer.embedded(container, config), options);
+      expect('pending', pending > 0, true);
+      expect('marks left', container.querySelectorAll('[data-pending]').length, 0);
+      expect('hydrated', heading(container), 'Ada: 0');
+      expect('adopted, not rebuilt', container.querySelector('button'), button);
+      await whenEventsBound(button);   // listeners attach a task later (their module loads on demand)
+      button.click();
+      await nextRender();
+      expect('live', heading(container), 'Ada: 1');
+
+      // The same managers object again
+      const again = await fromWorker(renderer);
+      await renderer.hydrate(again.container, config, renderer.embedded(again.container, config), options);
+      expect('a second hydration', heading(again.container), 'Ada: 0');
+
+      // The worker passed the JSON back: the page renders it, with the same managers
+      const onPage = document.createElement('div');
+      await renderer.render(onPage, config, vm, options);
+      expect('rendered on the page', heading(onPage), 'Ada: 0');
+
+      // A registry given to o2hRenderer wins
+      const itemscopeRegistry = new ItemscopeRegistry({ 'counter-view': Other });
+      const given = o2hRenderer({ registry: { itemscopeRegistry } });
+      const withGiven = await fromWorker(given);
+      await given.hydrate(withGiven.container, config, given.embedded(withGiven.container, config), options);
+      expect('a given registry', heading(withGiven.container), 'other Ada: 0');
+    } catch (e) {
+      differences.push(`threw: ${e.message}`);
+    }
+    document.getElementById('differences').textContent = differences.join('\n');
+    complete.dataset.status = differences.length === 0 ? 'success' : 'failure';
+    complete.textContent = 'done';
+  </script>
+</body>
+</html>

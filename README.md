@@ -107,6 +107,22 @@ In the worker, stand-in pipes and protocols throw a `LostReference` when used, s
 
 The page then hydrates with the real code, with `adopt: 'pending'` (or `true`). builtIns.tree adopts everything else, binds the pending parts, and renders the pending switches and repeats fresh. The result is the same DOM as a main-thread-only render; more of it is just finished by the page.
 
+#### Keeping the config JSON
+
+**One piece of code doesn't turn a JSON config into JS.** Stand-ins are made from `options`, so the config can stay data and name the code, while the code stays in a module:
+
+```js
+import config from './config.json' with { type: 'json' };   // { "tag": "section", "ish": "rocket-manager" }, '?.date?.longUtc' …
+import { RocketManager, longUtc } from './code.js';
+
+const options = { pipes: { longUtc }, managers: { 'rocket-manager': RocketManager } };
+await renderViaEdge(container, { worker, api, config, options });
+```
+
+The worker gets stand-ins, and `renderViaEdge` hydrates with the real `options`, managers included, so there's no registry to write. Only a class written into the config itself (`ish: RocketManager`) needs the config to be JS, so name managers instead. A name with no entry in `options` isn't reported: that part renders empty.
+
+In a [navigate-gingerly](https://github.com/bahrus/navigate-gingerly) app, the options are JSON too, with `{ import, export }` references: see its [Adding code to a JSON app](https://github.com/bahrus/navigate-gingerly#adding-code-to-a-json-app).
+
 #### Data pipes survive
 
 **Data pipes** (assign-gingerly's [`dataPipes`](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/pipes.md#data-pipes-opt-in-pipes-described-as-data): `Intl` formatters, lookups, built-ins, chains and aggregates, described as data) aren't lost. Their descriptors are stored, and the worker runs them. So the more of a config's pipes are data pipes, the more of the page the worker renders.
@@ -152,12 +168,12 @@ const { by, data, elapsed, pending, lost, error } = await renderViaEdge(containe
     api: 'https://fakestoreapi.com/products',
     config,
     options,
-    hydrate: { registry },                 // more assignFrom options for hydrating, if needed
+    hydrate: { signal },                   // more assignFrom options for hydrating, if needed
 });
 ```
 
 - **Stores the transform** (`prepareO2HTransform`) with the worker, once per worker. If the worker answers that it has no such transform (for example, a restarted `wrangler dev`), it stores it again and retries once.
-- **Renders and hydrates:** the worker's HTML goes into the container, and builtIns.tree hydrates it with `adopt: 'pending'` and the page's real pipes, finishing what the worker left pending (`pending` counts those elements).
+- **Renders and hydrates:** the worker's HTML goes into the container, and builtIns.tree hydrates it with `adopt: 'pending'` and the page's real pipes and managers, finishing what the worker left pending (`pending` counts those elements). `options.managers` becomes the itemscope registry, unless `hydrate` gives a `registry`.
 - **Falls back:** when the worker passes the JSON back (`X-O2H-Error`), the page renders it itself, and `by` is `'page'`, with the worker's reason in `error`.
 - **Throws** when the worker can't be reached, refuses the request (its guards, its rate limit), or the API fails.
 
@@ -183,7 +199,7 @@ mirror({ worker, app, into: document.querySelector('main'), renderer: o2hRendere
 | `aka` | Aliases, under the config's own `aka` |
 | `protocols` | Synchronous protocol handlers (`name://key` values) |
 | `snippets` | Static HTML for `{ snippet: 'name' }` specifications, by name: written as is (trimmed), with the `data-hole` elements the spec's `holes` name rendered like elements (needs well-formed hole markup). The same option builtIns.tree takes, which also checks it on the client (see [tree.md, Snippets](https://github.com/bahrus/assign-gingerly/blob/baseline/docs/tree.md#snippets-static-html)). |
-| `managers` | Itemscope manager classes by registered name. With one, a `{ tag, ish: 'name' }` element's subtree renders from the manager's getters. Either way, the element gets `itemscope="name"`, so the client can attach the manager. |
+| `managers` | Itemscope manager classes by registered name. With one, a `{ tag, ish: 'name' }` element's subtree renders from the manager's getters. Either way, the element gets `itemscope="name"`, so the client can attach the manager, which `renderViaEdge`, `hydrateO2H` and `renderO2HOnPage` do from this option. |
 | `style` | Prepend the default style, which hides pending parts, only when scripts run (so crawlers and no-JS readers see everything): `<style>@media (scripting: enabled) { [data-pending] { visibility: hidden; } }</style>`. Also exported as `PENDING_STYLE`. |
 | `embed` | Append the data the HTML was rendered from, as JSON, right after the tree: `<script type="application/json" data-tree="<markerName>">`, with `<` escaped so the data can't end the element. The client hydrates from it, so the data is always the snapshot the HTML came from. By default, values JSON drops or changes (functions, Dates, Maps and Sets, class instances, NaN, BigInts) are listed in the result's `notSerializable`, with their paths; `embed: { check: false }` skips that check, which costs about 3× a plain `JSON.stringify`. The data goes *after* the content, so it doesn't delay the first paint of what comes before it when the page streams. |
 
@@ -194,6 +210,8 @@ Types: [`types/o2h/types.d.ts`](types/o2h/types.d.ts).
 [`demo/index.html`](demo/index.html) renders [`demo/treeDefinition.js`](demo/treeDefinition.js), a copy of assign-gingerly's tree-demo definition, against [`demo/data/launch.json`](demo/data/launch.json). It shows o2h's HTML next to what builtIns.tree builds in the browser from the same definition, checks that the two are the same DOM, and finishes the server HTML with **Hydrate** (builtIns.tree adopts the server's elements; then the rocket card's "Increase by one" re-renders it). With `style: true`, the pending parts (the links bar, the rocket card) stay hidden until then.
 
 [`demo/benchmark/adopt.html`](demo/benchmark/adopt.html) times hydration with `adopt: true` against the experimental `adopt: 'pending'` (bind only what's marked), on the rocket definition, a mostly static company profile ([`companyDefinition.js`](demo/benchmark/companyDefinition.js)), and a directory of 100 profiles. It also checks that both give the same DOM and that the managers stay live.
+
+[`demo/benchmark/config-formats/`](demo/benchmark/config-formats/) compares a config as JSON and as JS: load time on first and repeat visits, parsing alone, and retained memory, in Chromium, Firefox and WebKit, for a real app's JSON (a copy of o2h-edge's store) and scaled copies. `npm run bench:config` runs all of it, in about 10 minutes (`-- --only=parse,memory` for less; it needs `npx playwright install`). For a real phone, `npm run bench:config -- --serve` serves [`phone.html`](demo/benchmark/config-formats/phone.html) on your local network until you stop it. Open the address it prints, and run it twice, since repeat visits are the point. Results so far, from one desktop: JSON parses 3 to 12 times faster, and retains about half the memory, but at these sizes that's a fraction of a millisecond and a few KB, and in Chromium a JS module loads faster on repeat visits, from V8's code cache. So the reasons for JSON are that it can travel and be stored, not speed.
 
 ## Viewing Locally
 

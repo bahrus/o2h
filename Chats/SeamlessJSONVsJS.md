@@ -144,3 +144,84 @@ I'd add this only when a bundled app needs it. It would merge into `options` bef
 2. **Shall I keep the benchmark?** It's in my scratchpad, and could move to `o2h/demo/benchmark/`, so you can rerun it, including on a real phone.
 
 The only repo file I changed is this document.
+
+## Bruce's Response I
+
+> 2. **Shall I keep the benchmark?**
+
+Yes, please move to o2h/demo/benchmark/
+
+> 1. **Shall I make the manager fix** 
+
+Yes, please do.
+
+Can you also document how to manage this transition if it isn't already?
+
+## Claude's Implementation Notes I
+
+**All three are done:** a manager named in JSON now hydrates with no code on the page beyond its own file, the store has one as a real example, the transition is documented, and the benchmark is in `o2h/demo/benchmark/`.
+
+### The fix
+
+[worker/edge.ts](../worker/edge.ts): `hydrateO2H` and `renderO2HOnPage` now both make the itemscope registry from `options.managers`, once per `managers` object. A `registry` you pass still wins. So `renderViaEdge` and `o2hRenderer()` get this too.
+
+[tests/managers.html](../tests/managers.html) is the new test, run in all three browsers: the worker's HTML from a stored transform, hydrated with nothing but the options, live after a click, the JSON passed back and rendered on the page, a second hydration, and a given registry winning.
+
+### The real example
+
+The store's product page has a quantity stepper, in [productView.js](../../o2h-edge/demo/store/productView.js). How many to add is per-view state, so it really does need code. The app stays JSON: the config has `ish="product-view"`, and `options.managers` has the reference.
+
+- **This replaces the data-only Add to cart binding.** It had to, since the amount now comes from the manager. The cart's −/+ buttons still use data bindings, so the store shows both ways.
+- **[cart.js](../../o2h-edge/demo/store/cart.js):** `cart-add` now takes a `quantity`, defaulting to 1.
+- **The worker now leaves part of the page pending.** It renders the product, and the stepper and button appear on hydration. `.buy` has a minimum height, so the page doesn't shift.
+
+### The docs
+
+- **[navigate-gingerly/README.md](../../navigate-gingerly/README.md), new "Adding code to a JSON app":** the main walkthrough. It has the three steps, what happens to the code at each stage, what visitors see, when you don't need code at all, the rules, and how to merge code by hand for bundlers (your "separately merge" idea, which needs no new API).
+- **[o2h/README.md](../README.md), new "Keeping the config JSON":** the same for `renderViaEdge`, without an app. I also updated the `managers` row, and what hydration does.
+- **[o2h-edge/README.md](../../o2h-edge/README.md):** the store's new manager.
+
+### The benchmark
+
+It's in [demo/benchmark/config-formats/](../demo/benchmark/config-formats/), with a copy of the store's `app.json`:
+
+- **`npm run bench:config`** runs everything, in about 10 minutes. `-- --only=parse,memory` runs less, and `--config=path.json` tries another app.
+- **`npm run bench:config -- --serve`** is for a real phone, on your local network until you stop it. It prints an address for [phone.html](../demo/benchmark/config-formats/phone.html). Run it twice, since the second run shows repeat visits. It runs in all three browsers and fits a 375 px screen, but I haven't tried it on a real phone.
+
+The README has a short summary of the findings.
+
+### A correction to my response
+
+I wrote that reading from IndexedDB was 2 to 3 times faster than a local fetch in Firefox. **That doesn't hold up.** In the phone page, which keeps one page running, Firefox's IndexedDB read was slower than fetch (about 7 to 11 ms against 3). My first figures came from fresh navigations, where a page's first fetch carries extra cost in Firefox. So treat IndexedDB against fetch as undecided: it depends on the browser and on how you measure.
+
+Also, the store's config grew with the stepper, so running the benchmark now gives somewhat higher figures than my tables (the memory at 100×, for one). The ratios look the same.
+
+### Something I found, and didn't change
+
+**A `data-pending` mark can come off before the element's listener is attached.** `bindEvent` in [assignGingerly.ts](../../assign-gingerly/assignGingerly.ts) runs a dynamic `import()` for every binding, so a listener is always at least a task late, and the first time it also has to wait for the module to download.
+
+My test caught this with a click right after `hydrate` resolved: the click was lost, the button was already visible, and the listener arrived about 8 to 11 ms later, here on localhost. It isn't new, and it isn't specific to managers. **On a slow phone's first visit, it could last as long as fetching that module.** That's rare, but a lost tap on a button that looks ready is the kind of thing your target users would hit.
+
+The test now waits with `whenEventsBound`, which exists for this. A real fix would be in assign-gingerly: cache the module, as `loadHandlerCommands` does, and keep the mark until the listener is on. I can do that if you'd like.
+
+### Checked
+
+These ran in a mirror of the workspace, with assign-gingerly's Playwright, since o2h's 1.65 has no browsers here (`npx playwright install` fixes that).
+
+- **o2h:** all pass, 27 across the three browsers (24 Node tests skipped by design, as they run once).
+- **o2h-edge:** `npm test` 22 of 22, and `tsc` is clean.
+- **The store, in Chromium, Firefox and WebKit, through the real worker:**
+  - The stepper goes up and down, and stops at 1. The price follows ($22.30, $66.90, $44.60).
+  - Adding 3 puts 3 in the cart, and the stepper goes back to 1.
+  - It works after in-app navigation too.
+  - The cart's checks are unchanged: $100.59, $78.29, $0.00.
+  - No page errors, and no sideways scrolling at 375 px (Chromium).
+
+**Mistakes of mine that testing caught:** I first named the stepper `.quantity`, which the cart already uses, so the CSS leaked into the cart. It's `.stepper` now.
+
+**Changed:**
+- **o2h:** `worker/edge.ts` and `.js`, `tests/managers.html`, `tests/o2h.spec.ts`, `package.json` (`bench:config`), `demo/benchmark/config-formats/`, and the README.
+- **o2h-edge:** `demo/store/` (`productView.js`, `app.mjs`, `app.json`, `cart.js`, `index.html`) and the README.
+- **navigate-gingerly:** the README.
+
+**To publish:** o2h first, because o2h-edge's store needs this `edge.js`. Locally, o2h-edge uses the sibling repo, so it works now. Nothing is committed.

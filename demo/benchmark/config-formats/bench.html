@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>bench</title>
+<script type="module">
+const q = new URLSearchParams(location.search);
+const size = q.get('size');
+const jsonURL = `/p/${size}.json`, jsURL = `/p/${size}.js`;
+
+const idb = () => new Promise((res, rej) => {
+    const r = indexedDB.open('bench', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('s');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+});
+const get = async key => {
+    const db = await idb();
+    return new Promise((res, rej) => {
+        const r = db.transaction('s').objectStore('s').get(key);
+        r.onsuccess = () => { db.close(); res(r.result); };
+        r.onerror = () => rej(r.error);
+    });
+};
+const put = async (key, value) => {
+    const db = await idb();
+    return new Promise((res, rej) => {
+        const tx = db.transaction('s', 'readwrite');
+        tx.objectStore('s').put(value, key);
+        tx.oncomplete = () => { db.close(); res(); };
+        tx.onerror = () => rej(tx.error);
+    });
+};
+
+const load = {
+    fetchText: () => fetch(jsonURL).then(r => r.text()),
+    fetchParse: () => fetch(jsonURL).then(r => r.json()),
+    jsonModule: () => import(jsonURL, { with: { type: 'json' } }).then(m => m.default),
+    jsModule: () => import(jsURL).then(m => m.default),
+    idbObject: () => get(`o-${size}`),
+    idbString: async () => JSON.parse(await get(`s-${size}`)),
+};
+
+function micro(text) {
+    const js = `(${text})`;
+    const object = JSON.parse(text);
+    const time = (fn, runs) => {
+        const samples = [];
+        for (let i = 0; i < runs; i++) { const t = performance.now(); fn(i); samples.push(performance.now() - t); }
+        samples.sort((a, b) => a - b);
+        return +samples[Math.floor(runs / 2)].toFixed(3);
+    };
+    const runs = size === 'x100' ? 25 : 150;
+    return {
+        jsonParse: time(() => JSON.parse(text), runs),
+        // Indirect eval, with a unique comment so V8's eval cache can't help: parse + compile + run of a literal
+        jsLiteral: time(i => (0, eval)(`/*${Math.random()}*/${js}`), runs),
+        structuredClone: time(() => structuredClone(object), runs),
+    };
+}
+
+async function main() {
+    if (q.has('setup')) {
+        const text = await fetch(jsonURL).then(r => r.text());
+        await put(`s-${size}`, text);
+        await put(`o-${size}`, JSON.parse(text));
+        return true;
+    }
+    if (q.has('micro')) return micro(await fetch(jsonURL).then(r => r.text()));
+    if (q.has('mem')) {
+        const m = q.get('mem');
+        if (m === 'jsonModule') await load.jsonModule();                 // nothing here keeps it: only the module map
+        if (m === 'jsModule') await load.jsModule();                     // likewise
+        if (m === 'fetchKept') globalThis.kept = await load.fetchParse();
+        if (m === 'fetchDropped') await load.fetchParse();
+        if (m === 'idbDropped') await load.idbObject();
+        return true;
+    }
+    const variant = q.get('variant');
+    const t = performance.now();
+    const value = await load[variant]();
+    const ms = performance.now() - t;
+    // Read one thing, so nothing can be optimized away
+    if (variant !== 'fetchText' && !value.routes.length) throw new Error('empty');
+    return { ms };
+}
+window.done = main();
+</script>
