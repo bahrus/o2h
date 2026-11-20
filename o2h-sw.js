@@ -113,6 +113,20 @@ function parseCachedPath(path) {
 function isPipe(part, pipes) {
   return !!pipes && Object.hasOwn(pipes, part);
 }
+function registerPipeMaker(maker) {
+  makePipes = maker;
+}
+function makePipe(pipes, name) {
+  let made = madePipes.get(pipes);
+  if (!made) {
+    if (!makePipes) {
+      throw new Error(`assign-gingerly: the pipe "${name}" is a descriptor, and dataPipes isn't loaded: import 'assign-gingerly/pipes/dataPipes.js', or use assignFromAsync, which loads it`);
+    }
+    made = makePipes(pipes);
+    madePipes.set(pipes, made);
+  }
+  return made[name];
+}
 function navigatePath(source, parts, withMethods, permissionProcessor, pipes) {
   let current = source;
   let i = 0;
@@ -122,7 +136,7 @@ function navigatePath(source, parts, withMethods, permissionProcessor, pipes) {
     const rawPart = parts[i];
     if (isPipe(rawPart, pipes)) {
       const pipe = pipes[rawPart];
-      current = pipe(current);
+      current = (typeof pipe === "function" ? pipe : makePipe(pipes, rawPart))(current);
       i++;
       continue;
     }
@@ -305,12 +319,14 @@ function getValue(path, source, options) {
   const permissionProcessor = options?.permissionProcessor;
   return navigatePath(source, parts, withMethods, permissionProcessor, options?.pipes);
 }
-var ROOT_REF, PARENT_REF, pathCache;
+var ROOT_REF, PARENT_REF, pathCache, makePipes, madePipes;
 var init_getValues = __esm({
   "../assign-gingerly/resolve/getValues.js"() {
+    "use strict";
     ROOT_REF = "$root";
     PARENT_REF = "$parent";
     pathCache = /* @__PURE__ */ new Map();
+    madePipes = /* @__PURE__ */ new WeakMap();
   }
 });
 
@@ -408,10 +424,24 @@ function mapKeyName(key) {
   keyNames.set(key, name);
   return name;
 }
+function isPathKey(name) {
+  return name.startsWith("?.");
+}
+function mapKeyValue(name, from) {
+  if (!isPathKey(name))
+    return from?.[name];
+  let segments = keyPaths.get(name);
+  if (!segments)
+    keyPaths.set(name, segments = name.split("?.").filter((segment) => segment !== ""));
+  let value2 = from;
+  for (const segment of segments)
+    value2 = value2?.[segment];
+  return value2;
+}
 function mapEntries(map, from, keepNullish = false) {
   const entries = [];
   const push = (key, name, spec, templateKey) => {
-    const value2 = from?.[name];
+    const value2 = mapKeyValue(name, from);
     if (value2 == null && !keepNullish)
       return;
     entries.push({ key, name, spec, value: value2, templateKey });
@@ -421,7 +451,10 @@ function mapEntries(map, from, keepNullish = false) {
     if (key === WILDCARD)
       continue;
     const name = mapKeyName(key);
-    named.add(name);
+    if (!isPathKey(name))
+      named.add(name);
+    else if (/^\?\.[^?]+$/.test(name))
+      named.add(name.slice(2));
     push(key, name, map[key], key);
   }
   if (map[WILDCARD] === void 0 || from === null || typeof from !== "object")
@@ -625,7 +658,7 @@ function snippetParts(html) {
     parts.push(html.slice(textStart));
   return parts;
 }
-var WILDCARD, DEFAULT_WILDCARD_PATTERN, textPatterns, wildcardSpecs, keyNames, DEFAULT_CASE, HOLE, VOID_ELEMENTS, RAW_TEXT_ELEMENTS, ENTITIES, TAG_NAME, ATTR_NAME, UNQUOTED, match;
+var WILDCARD, DEFAULT_WILDCARD_PATTERN, textPatterns, wildcardSpecs, keyNames, keyPaths, DEFAULT_CASE, HOLE, VOID_ELEMENTS, RAW_TEXT_ELEMENTS, ENTITIES, TAG_NAME, ATTR_NAME, UNQUOTED, match;
 var init_treeSpec = __esm({
   "../assign-gingerly/handlers/treeSpec.js"() {
     init_getValues();
@@ -634,6 +667,7 @@ var init_treeSpec = __esm({
     textPatterns = /* @__PURE__ */ new Map();
     wildcardSpecs = /* @__PURE__ */ new WeakMap();
     keyNames = /* @__PURE__ */ new Map();
+    keyPaths = /* @__PURE__ */ new Map();
     DEFAULT_CASE = /* @__PURE__ */ Symbol("builtIns.tree default case");
     HOLE = "data-hole";
     VOID_ELEMENTS = /* @__PURE__ */ new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
@@ -810,6 +844,35 @@ var init_microJoin = __esm({
     init_getValues();
     formatNumber = (n) => (numberFormat ??= new Intl.NumberFormat()).format(n);
     formatDate = (d) => (dateFormat ??= new Intl.DateTimeFormat()).format(d);
+  }
+});
+
+// ../assign-gingerly/syncOps/join.js
+function processValue(value2) {
+  const result = [];
+  for (const item of value2) {
+    if (Array.isArray(item)) {
+      if (item.some((el) => el == null)) {
+        continue;
+      }
+      result.push(...processValue(item));
+    } else if (item != null) {
+      result.push(item);
+    }
+  }
+  return result;
+}
+function join(args, extra = {}) {
+  const { separator = "" } = extra;
+  const items = Array.isArray(args) ? processValue(args) : [args];
+  return items.join(separator);
+}
+function isJoinValue(value2) {
+  return !!value2 && typeof value2 === "object" && !Array.isArray(value2) && Object.hasOwn(value2, "join") && Object.keys(value2).every((key) => key === "join" || key === "separator");
+}
+var init_join = __esm({
+  "../assign-gingerly/syncOps/join.js"() {
+    "use strict";
   }
 });
 
@@ -2454,6 +2517,7 @@ __export(assignGingerly_exports, {
   INSTANCE_MAP_GUID: () => INSTANCE_MAP_GUID,
   ItemscopeRegistry: () => ItemscopeRegistry,
   applyAttribute: () => applyAttribute,
+  assertTogglesItself: () => assertTogglesItself,
   assignGingerly: () => assignGingerly,
   default: () => assignGingerly_default,
   evaluatePathWithMethods: () => evaluatePathWithMethods,
@@ -2461,6 +2525,7 @@ __export(assignGingerly_exports, {
   isAllowedMethod: () => isAllowedMethod2,
   isClassInstance: () => isClassInstance,
   isReadonlyProperty: () => isReadonlyProperty,
+  isToggleCommand: () => isToggleCommand,
   tryAssignTo: () => tryAssignTo,
   whenEventsBound: () => whenEventsBound
 });
@@ -2510,8 +2575,10 @@ function applyAttribute(element, name, value2, permissionProcessor) {
     text = tokens2.length > 0 ? tokens2.join(" ") : null;
   } else if (typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "bigint") {
     text = String(value2);
+  } else if (isJoinValue(value2)) {
+    text = join(value2.join, value2);
   } else {
-    console.warn(`assignGingerly: ' :=' value for attribute "${name}" must be a string, number, boolean, array or nullish (got ${typeof value2}) \u2014 skipped.`);
+    console.warn(`assignGingerly: ' :=' value for attribute "${name}" must be a string, number, boolean, array, { join } or nullish (got ${typeof value2}) \u2014 skipped.`);
     return;
   }
   if (permissionProcessor?.checkRestrictedAttributeCall("setAttribute", [name, text ?? void 0]).blocked) {
@@ -2568,6 +2635,11 @@ function addValue(lhs, rhs) {
 }
 function isToggleCommand(key) {
   return key.endsWith(" =!");
+}
+function assertTogglesItself(key, value2) {
+  if (value2 !== ".") {
+    throw new Error(`"${key}" toggles itself, so its right hand side must be '.'. To negate another value, use assignFrom's ! marker: '!?.path' (from), or '!$0?.path' (the target).`);
+  }
 }
 function parseToggleCommand(key) {
   if (!isToggleCommand(key)) {
@@ -2806,26 +2878,6 @@ function applyToEach(iterable, remainingPath, value2, withMethods, aliasMap, opt
     }
   }
 }
-function resolveValueToNegate(rhsPath, target) {
-  if (typeof rhsPath === "string" && isNestedPath(rhsPath)) {
-    const rhsPathParts = parsePath(rhsPath);
-    let current = target;
-    let exists = true;
-    for (const part of rhsPathParts) {
-      if (current && typeof current === "object" && part in current) {
-        current = current[part];
-      } else {
-        exists = false;
-        break;
-      }
-    }
-    return exists ? current : true;
-  }
-  if (typeof rhsPath === "string") {
-    return rhsPath in target ? target[rhsPath] : true;
-  }
-  return rhsPath;
-}
 function getIterableAtPath(target, pathParts, value2, withMethods, permissionProcessor) {
   const current = getValueAtPath(target, pathParts, value2, withMethods, permissionProcessor);
   return isIterable(current) ? current : void 0;
@@ -3016,37 +3068,17 @@ function assignGingerly(target, source, options, permissionProcessor) {
     if (isToggleCommand(key)) {
       const lhsPath = parseToggleCommand(key);
       if (lhsPath) {
-        const rhsPath = value2;
-        if (isNestedPath(lhsPath)) {
-          const lhsPathParts = parsePath(lhsPath);
-          if (lhsPathParts.some((part) => isForEachSymbol(part, aliasMap))) {
-            const resolvedValue = rhsPath === "." || typeof rhsPath !== "string" ? rhsPath : resolveValueToNegate(rhsPath, target);
-            applyCommandToEach(target, lhsPathParts, " =!", resolvedValue, withMethodsSet, aliasMap, options, permissionProcessor);
-            continue;
-          }
-          const lhsLastKey = lhsPathParts[lhsPathParts.length - 1];
-          const lhsParent = ensureNestedPath(target, lhsPathParts);
-          let valueToNegate;
-          if (rhsPath === ".") {
-            valueToNegate = lhsLastKey in lhsParent ? lhsParent[lhsLastKey] : void 0;
-          } else {
-            valueToNegate = resolveValueToNegate(rhsPath, target);
-          }
-          if (!permissionProcessor?.checkRestrictedProp(lhsLastKey)) {
-            lhsParent[lhsLastKey] = !valueToNegate;
-          }
-        } else {
-          const lhsLastKey = lhsPath;
-          const lhsParent = target;
-          let valueToNegate;
-          if (rhsPath === ".") {
-            valueToNegate = lhsLastKey in lhsParent ? lhsParent[lhsLastKey] : void 0;
-          } else {
-            valueToNegate = resolveValueToNegate(rhsPath, target);
-          }
-          if (!permissionProcessor?.checkRestrictedProp(lhsLastKey)) {
-            lhsParent[lhsLastKey] = !valueToNegate;
-          }
+        assertTogglesItself(key, value2);
+        const nested = isNestedPath(lhsPath);
+        const lhsPathParts = nested ? parsePath(lhsPath) : [lhsPath];
+        if (nested && lhsPathParts.some((part) => isForEachSymbol(part, aliasMap))) {
+          applyCommandToEach(target, lhsPathParts, " =!", value2, withMethodsSet, aliasMap, options, permissionProcessor);
+          continue;
+        }
+        const lhsLastKey = lhsPathParts[lhsPathParts.length - 1];
+        const lhsParent = nested ? ensureNestedPath(target, lhsPathParts) : target;
+        if (!permissionProcessor?.checkRestrictedProp(lhsLastKey)) {
+          lhsParent[lhsLastKey] = !lhsParent[lhsLastKey];
         }
       }
       continue;
@@ -3385,6 +3417,7 @@ var init_assignGingerly = __esm({
     "use strict";
     init_getValues();
     init_resolveRegistry();
+    init_join();
     DEFAULT_ENHANCEMENT_KEY = /* @__PURE__ */ Symbol("assign-gingerly.default-enhancement-setup");
     INSTANCE_MAP_GUID = "HDBhTPLuIUyooMxK88m68Q";
     EnhancementRegisteredEvent = class _EnhancementRegisteredEvent extends Event {
@@ -4411,32 +4444,6 @@ var init_resolveLhsPath = __esm({
   }
 });
 
-// ../assign-gingerly/syncOps/join.js
-function processValue(value2) {
-  const result = [];
-  for (const item of value2) {
-    if (Array.isArray(item)) {
-      if (item.some((el) => el == null)) {
-        continue;
-      }
-      result.push(...processValue(item));
-    } else if (item != null) {
-      result.push(item);
-    }
-  }
-  return result;
-}
-function join(args, extra = {}) {
-  const { separator = "" } = extra;
-  const items = Array.isArray(args) ? processValue(args) : [args];
-  return items.join(separator);
-}
-var init_join = __esm({
-  "../assign-gingerly/syncOps/join.js"() {
-    "use strict";
-  }
-});
-
 // ../assign-gingerly/syncOps/registry.js
 var SYNC_OPS;
 var init_registry = __esm({
@@ -5110,6 +5117,8 @@ function categorizeKeys(expandedPattern) {
   const syncOpKeys = [];
   const multiInvokeKeys = [];
   for (const key of Object.keys(expandedPattern)) {
+    if (isToggleCommand(key))
+      assertTogglesItself(key, expandedPattern[key]);
     if (isHandlerCommand(key)) {
       if (key.startsWith("#[")) {
         idRefHandlerKeys.push(key);
@@ -5379,6 +5388,7 @@ init_treeSpec();
 // ../assign-gingerly/handlers/compileTree.js
 init_getValues();
 init_microJoin();
+init_join();
 init_treeSpec();
 var IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 var ATTR_KEY = /^([A-Za-z_:][\w:.-]*) :=$/;
@@ -5412,6 +5422,8 @@ function attributeText(value2) {
   }
   if (typeof value2 === "string" || typeof value2 === "number" || typeof value2 === "bigint")
     return String(value2);
+  if (isJoinValue(value2))
+    return join(value2.join, value2);
   return void 0;
 }
 
@@ -5755,6 +5767,7 @@ function renderMicroJoin(config, scope, options, attrs) {
 }
 
 // ../assign-gingerly/pipes/dataPipes.js
+init_getValues();
 var PIPE_DESCRIPTOR = /* @__PURE__ */ Symbol.for("assign-gingerly.pipeDescriptor");
 var BUILT_INS = {
   parseDate: (v) => Date.parse(v),
@@ -5787,6 +5800,7 @@ function dataPipes(entries) {
   }
   return pipes;
 }
+registerPipeMaker(dataPipes);
 function withDescriptor(pipe, descriptor) {
   Object.defineProperty(pipe, PIPE_DESCRIPTOR, { value: descriptor });
   return pipe;
@@ -5801,8 +5815,14 @@ function fromDescriptor(name, d, pipes) {
       return usePipe(name, d);
     if ("chain" in d)
       return chainPipe(d, pipes);
+    if ("sum" in d)
+      return sumPipe(name, d, pipes);
+    if ("min" in d)
+      return extremePipe(name, "min", d.min, pipes);
+    if ("max" in d)
+      return extremePipe(name, "max", d.max, pipes);
   }
-  throw new Error(`dataPipes: "${name}" is neither a function nor a pipe descriptor ({ intl }, { map }, { use } or { chain })`);
+  throw new Error(`dataPipes: "${name}" is neither a function nor a pipe descriptor ({ intl }, { map }, { use }, { chain }, { sum }, { min } or { max })`);
 }
 function intlPipe(name, d) {
   if (!INTL_KINDS.has(d.intl))
@@ -5850,6 +5870,51 @@ function chainPipe(d, pipes) {
       chainDepth--;
     }
   };
+}
+function sumPipe(name, d, pipes) {
+  const paths = typeof d.sum === "string" ? [d.sum] : d.sum;
+  if (!Array.isArray(paths) || paths.length === 0 || !paths.every((p) => typeof p === "string" && p.startsWith("?."))) {
+    throw new Error(`dataPipes: "${name}": sum takes a ?. path, or an array of them (multiplied per element)`);
+  }
+  const options = { pipes };
+  return (v) => {
+    if (!Array.isArray(v))
+      return void 0;
+    let total = 0;
+    for (const item of v) {
+      let product = 1;
+      for (const path of paths)
+        product *= Number(getValue(path, item, options) ?? NaN);
+      if (Number.isFinite(product))
+        total += product;
+    }
+    return total;
+  };
+}
+function extremePipe(name, which, path, pipes) {
+  if (typeof path !== "string" || !path.startsWith("?.")) {
+    throw new Error(`dataPipes: "${name}": ${which} takes a ?. path`);
+  }
+  const options = { pipes };
+  const better = which === "min" ? (a, b) => a < b : (a, b) => a > b;
+  return (v) => {
+    if (!Array.isArray(v))
+      return void 0;
+    let best;
+    for (const item of v) {
+      const n = numeric(getValue(path, item, options));
+      if (Number.isFinite(n) && (best === void 0 || better(n, best)))
+        best = n;
+    }
+    return best;
+  };
+}
+function numeric(raw) {
+  if (typeof raw === "number")
+    return raw;
+  if (typeof raw === "string" && raw.trim() !== "")
+    return Number(raw);
+  return NaN;
 }
 
 // worker/transform.js
@@ -5916,7 +5981,7 @@ function reviveO2HTransform(transform) {
           throw new LostReference(`the ${kind} "${name}"`);
         };
     }
-    options[key] = key === "pipes" ? dataPipes(revived) : revived;
+    options[key] = revived;
   }
   return { config: transform.config, options };
 }
